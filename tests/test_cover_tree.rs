@@ -1,8 +1,10 @@
+use core::panic;
+
 use rust::cover_tree::{CoverTree, Distance};
 
 
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Point2D {
     x: i32,
     y: i32,
@@ -13,6 +15,18 @@ impl Distance for Point2D {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
         ((dx * dx + dy * dy) as f32).sqrt()
+    }
+}
+
+impl std::fmt::Display for Point2D {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
+impl std::fmt::Debug for Point2D {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
     }
 }
 
@@ -92,14 +106,20 @@ impl Distance for Point2D {
     #[test]
     fn test_insert_many_points_and_validate_tree() {
         let mut tree = CoverTree::<Point2D>::new();
+        tree.print();
         for x in -20..=20 {
             for y in -20..=20 {
                 if x % 10 == 0 && y % 10 == 0 {
                     tree.insert(Point2D { x, y });
-                }
+                    tree.print();
+                    if let Err(e) = tree.assert_valid_cover_tree() {
+                        println!("Cover tree validation failed after inserting point ({}, {}): {}", x, y, e);
+                        tree.print();
+                        panic!();
+                    }
+                }                
             }
         }
-        tree.assert_valid_cover_tree();
     }
 
     #[test]
