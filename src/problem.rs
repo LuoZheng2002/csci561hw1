@@ -1,15 +1,16 @@
 use core::f32;
 use std::{cell::RefCell, rc::{Rc, Weak}};
 
+use ordered_float::NotNan;
 use rand::{distr::{weighted::WeightedIndex, Distribution}, seq::SliceRandom, Rng};
 
-use crate::{cover_tree::CoverTree, kdtree::KDTree};
+use crate::{cover_tree::CoverTree};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct City{
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
+    pub x: NotNan<f32>,
+    pub y: NotNan<f32>,
+    pub z: NotNan<f32>,
 }
 
 impl City{
@@ -17,15 +18,6 @@ impl City{
         (self.x - other.x).powi(2) +
         (self.y - other.y).powi(2) +
         (self.z - other.z).powi(2)
-    }
-
-    pub fn coord(&self, axis: usize) -> f32 {
-        match axis {
-            0 => self.x,
-            1 => self.y,
-            2 => self.z,
-            _ => panic!("Invalid axis"),
-        }
     }
     pub fn distance(&self, other: &Self) -> f32 {
         self.dist2(other).sqrt()
@@ -104,7 +96,7 @@ impl Solution {
     }
 
     pub fn from_nearest_neighbor(problem: &Rc<Problem>){
-        let cover_tree = CoverTree::new()
+        // let cover_tree = CoverTree::new()
     }
 }
 

@@ -1,3 +1,4 @@
+use ordered_float::NotNan;
 use rand::distr::Uniform;
 use rand::{prelude::*};
 use std::cell::RefCell;
@@ -23,6 +24,10 @@ fn generate_point_in_sphere(max_radius: f32, dist: &Uniform<f32>, rng: &mut impl
     let x = r * phi.sin() * theta.cos();
     let y = r * phi.sin() * theta.sin();
     let z = r * phi.cos();
+
+    let x = NotNan::new(x).unwrap();
+    let y = NotNan::new(y).unwrap();
+    let z = NotNan::new(z).unwrap();
 
     City { x, y, z }
 }

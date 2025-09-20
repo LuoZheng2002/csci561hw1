@@ -1,0 +1,112 @@
+use rust::cover_tree::{CoverTree, Distance};
+
+
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Point2D {
+    x: i32,
+    y: i32,
+}
+
+impl Distance for Point2D {
+    fn distance(&self, other: &Self) -> f32 {
+        let dx = self.x - other.x;
+        let dy = self.y - other.y;
+        ((dx * dx + dy * dy) as f32).sqrt()
+    }
+}
+
+#[test]
+    fn test_insert_and_nearest_neighbor() {
+        let mut tree = CoverTree::<Point2D>::new();
+        let points = vec![
+            Point2D { x: 0, y: 0 },
+            Point2D { x: 10, y: 10 },
+            Point2D { x: -10, y: -10 },
+            Point2D { x: 5, y: 5 },
+            Point2D { x: 1, y: 1 },
+        ];
+        for p in &points {
+            tree.insert(p.clone());
+        }
+
+        let query = Point2D { x: 0, y: 1 };
+        let (nn, dist) = tree.nearest_neighbor(&query).unwrap();
+        assert_eq!(nn, Point2D { x: 0, y: 0 });
+        assert!((dist - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate")]
+    fn test_insert_duplicate_should_panic() {
+        let mut tree = CoverTree::<Point2D>::new();
+        let p = Point2D { x: 1, y: 2 };
+        tree.insert(p.clone());
+        tree.insert(p); // should panic
+    }
+
+    #[test]
+    fn test_remove_node() {
+        let mut tree = CoverTree::<Point2D>::new();
+        let points = vec![
+            Point2D { x: 0, y: 0 },
+            Point2D { x: 10, y: 10 },
+            Point2D { x: -10, y: -10 },
+            Point2D { x: 5, y: 5 },
+        ];
+        for p in &points {
+            tree.insert(p.clone());
+        }
+
+        let to_remove = Point2D { x: 5, y: 5 };
+        tree.remove(&to_remove);
+        tree.assert_valid_cover_tree();
+
+        let query = Point2D { x: 5, y: 5 };
+        let result = tree.nearest_neighbor(&query);
+        assert!(result.is_some());
+        let (nn, _) = result.unwrap();
+        assert_ne!(nn, to_remove);
+    }
+
+    #[test]
+    fn test_empty_tree_nearest_neighbor_is_none() {
+        let tree = CoverTree::<Point2D>::new();
+        let query = Point2D { x: 1, y: 2 };
+        assert!(tree.nearest_neighbor(&query).is_none());
+    }
+
+    #[test]
+    fn test_remove_root_child_and_validate() {
+        let mut tree = CoverTree::<Point2D>::new();
+        let p1 = Point2D { x: 0, y: 0 };
+        let p2 = Point2D { x: 1, y: 1 };
+
+        tree.insert(p1.clone());
+        tree.insert(p2.clone());
+
+        tree.remove(&p2);
+        tree.assert_valid_cover_tree();
+    }
+
+    #[test]
+    fn test_insert_many_points_and_validate_tree() {
+        let mut tree = CoverTree::<Point2D>::new();
+        for x in -20..=20 {
+            for y in -20..=20 {
+                if x % 10 == 0 && y % 10 == 0 {
+                    tree.insert(Point2D { x, y });
+                }
+            }
+        }
+        tree.assert_valid_cover_tree();
+    }
+
+    #[test]
+    fn test_print_tree() {
+        let mut tree = CoverTree::<Point2D>::new();
+        tree.insert(Point2D { x: 0, y: 0 });
+        tree.insert(Point2D { x: 5, y: 0 });
+        tree.insert(Point2D { x: 10, y: 10 });
+        tree.print();
+    }

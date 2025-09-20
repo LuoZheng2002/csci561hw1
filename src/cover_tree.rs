@@ -1,169 +1,94 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
-use crate::problem::City;
+pub trait Distance{
+    fn distance(&self, other: &Self) -> f32;
+}
 
+
+
+impl Distance for i32{    
+    fn distance(&self, other: &Self) -> f32 {
+        (*self - *other).abs() as f32
+    }
+}
 
 
 #[derive(Debug)]
-pub struct CoverTreeNode {
-    city: City,
+pub struct CoverTreeNode<T: Ord + Clone + Distance + std::fmt::Debug> {
+    point: T,
     level: RefCell<i32>,
-    parent: RefCell<Weak<CoverTreeNode>>,
-    children: RefCell<Vec<Rc<CoverTreeNode>>>,
+    parent: RefCell<Weak<CoverTreeNode<T>>>,
+    children: RefCell<Vec<Rc<CoverTreeNode<T>>>>,
 }
 
-impl CoverTreeNode {
-    fn new(city: City, level: i32, parent: Weak<CoverTreeNode>) -> Rc<Self> {
+impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTreeNode<T> {
+    fn new(point: T, level: i32, parent: Weak<CoverTreeNode<T>>) -> Rc<Self> {
         Rc::new(CoverTreeNode {
-            city,
+            point,
             level: RefCell::new(level),
             parent: RefCell::new(parent),
             children: RefCell::new(vec![]),
         })
     }
 
-    /// Insert a new city into this node or its descendants
+    /// Insert a new point into this node or its descendants
     /// Returns true if there is a parent found
     /// 
-    fn insert(self: Rc<Self>, p: City) {
+    fn insert(self: Rc<Self>, p: T) {
         self.children
             .borrow_mut()
             .push(CoverTreeNode::new(p, self.level.borrow().clone() - 1, Rc::downgrade(&self)));
     }
-    
-    // fn insert(self: Rc<Self>, p: City) -> bool {
-    //     let self_level = self_node.level.borrow().clone();
-    //     let mut candidates = vec![Rc::clone(self_node)];
-    //     let mut level = self_level;
-
-    //     loop {
-    //         let mut next_candidates = vec![];
-    //         let mut found = false;
-
-    //         for candidate in &candidates {
-    //             // let dist = candidate.borrow().city.distance(&p);
-    //             let dist = candidate.city.distance(&p);
-    //             if dist <= f32::exp2(level as f32) {
-    //                 found = true;
-    //                 for child in candidate.children.borrow().iter() {
-    //                     next_candidates.push(child.clone());
-    //                 }
-    //             }
-    //         }
-
-    //         if found {
-    //             candidates = next_candidates;
-    //             level -= 1;
-    //         } else {
-    //             break;
-    //         }
-    //     }
-
-    //     // Now we can insert at `level`
-    //     let new_node = CoverTreeNode::new(p.clone(), level, Weak::new());
-
-    //     // Attach to first valid parent
-    //     for parent in candidates {
-    //         let dist = parent.city.distance(&p);
-    //         if dist <= f32::exp2((level + 1) as f32) {
-    //             // new_node.borrow_mut().parent = Rc::downgrade(&parent);
-    //             // parent.borrow_mut().children.push(Rc::clone(&new_node));
-    //             *new_node.parent.borrow_mut() = Rc::downgrade(&parent);
-    //             parent.children.borrow_mut().push(Rc::clone(&new_node));
-    //             return true;
-    //         }
-    //     }
-    //     false
-    // }
-
-    // /// Recursively find the nearest neighbor
-    // fn nearest(self: Rc<Self>, query: &City, best: &mut Option<(City, f32)>) {
-    //     let dist = self.city.distance(query);
-    //     if best.map(|(_, d)| dist < d).unwrap_or(true) {
-    //         *best = Some((self.city.clone(), dist));
-    //     }
-
-    //     for child in self.children.borrow().iter() {
-    //         let child_dist = child.city.distance(query);
-    //         if best.map(|(_, best_d)| (dist - child_dist).abs() <= best_d).unwrap_or(true) {
-    //             child.clone().nearest( query, best);
-    //         }
-    //     }
-    // }
-
-    // Try to remove a city from the subtree
-    // fn remove(self: Rc<Self>, target: &City) -> bool {
-    //     let mut removed = false;
-
-    //     self.children.borrow_mut().retain(|child| {
-    //         if child.city == *target {
-    //             removed = true;
-    //             // Re-parent grandchildren
-    //             let mut grandchildren = child.children.borrow_mut();
-    //             let grandchildren = std::mem::take(&mut *grandchildren);
-
-    //             for grandchild in grandchildren {
-    //                 *grandchild.parent.borrow_mut() = Rc::downgrade(&self);
-    //                 self.children.borrow_mut().push(grandchild);
-    //             }
-    //             false
-    //         } else {
-    //             true
-    //         }
-    //     });
-
-    //     if removed {
-    //         return true;
-    //     }
-
-    //     // Recursively try to remove in children
-    //     for child in self.children.borrow().iter() {
-    //         if child.clone().remove(target) {
-    //             return true;
-    //         }
-    //     }
-    //     false
-    // }
 }
 
 #[derive(Debug)]
-pub struct CoverTree {
-    root: Rc<CoverTreeNode>,
+pub struct CoverTree<T: Ord + Clone + Distance + std::fmt::Debug> {
+    root: Option<Rc<CoverTreeNode<T>>>,
 }
 
-impl CoverTree {
-    pub fn new(root_point: City) -> Self {
+impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
+    pub fn new() -> Self {
         Self {
-            root: CoverTreeNode::new(root_point, 0, Weak::new()),
+            root: None,
         }
     }
 
-    pub fn insert(&mut self, p: City){
-        let root_level = self.root.level.borrow().clone();
-        let dist_to_root = self.root.city.distance(&p);
+    pub fn insert(&mut self, p: T){
+        // if there is no root node, create a new root node with the point p and level 0
+        let Some(root) = self.root.as_ref() else{
+            self.root = Some(CoverTreeNode::new(p, 0, Weak::new()));
+            return;
+        };
+        let root_level = root.level.borrow().clone();
+        let dist_to_root = root.point.distance(&p);
+        // the potential new root level if the new point is too far away from the root node
         let new_root_level = f32::log2(dist_to_root).ceil() as i32;
         if new_root_level > root_level{
+            let mut current_root = root.clone();
+            let root_value = current_root.point.clone();
             for i in (root_level + 1)..=new_root_level {
-                let new_root = CoverTreeNode::new(self.root.city.clone(), i, Weak::new());
-                *self.root.parent.borrow_mut() = Rc::downgrade(&new_root);
-                new_root.children.borrow_mut().push(self.root.clone());
-                self.root = new_root;
+                let new_root = CoverTreeNode::new(root_value.clone(), i, Weak::new());
+                *current_root.parent.borrow_mut() = Rc::downgrade(&new_root);
+                new_root.children.borrow_mut().push(current_root.clone());
+                current_root = new_root;
             }
+            self.root = Some(current_root);
         }
-        assert!(dist_to_root <= f32::exp2(self.root.level.borrow().clone() as f32));
+        let root = self.root.clone().unwrap();
+        assert!(dist_to_root <= f32::exp2(root.level.borrow().clone() as f32));
         // it is always possible to find a parent in current_potential_parents that is a valid parent for the new point
-        let mut level_to_potential_parents: BTreeMap<i32, Vec<Rc<CoverTreeNode>>> = BTreeMap::new();
-        let root_level = self.root.level.borrow().clone();
-        level_to_potential_parents.insert(root_level, vec![self.root.clone()]);
+        let mut level_to_potential_parents: BTreeMap<i32, Vec<Rc<CoverTreeNode<T>>>> = BTreeMap::new();
+        let root_level = root.level.borrow().clone();
+        level_to_potential_parents.insert(root_level, vec![root.clone()]);
         let mut current_level = root_level;
         loop {
             let current_potential_parents = level_to_potential_parents.get(&current_level).unwrap();
-            let mut next_potential_parents: Vec<Rc<CoverTreeNode>> = Vec::new();
+            let mut next_potential_parents: Vec<Rc<CoverTreeNode<T>>> = Vec::new();
             for parent in current_potential_parents.iter() {
                 for child in parent.children.borrow().iter() {
-                    let distance = child.city.distance(&p);
+                    let distance = child.point.distance(&p);
                     // distance <= Σ...
                     if distance < f32::exp2(current_level as f32) {
                         next_potential_parents.push(child.clone());
@@ -178,7 +103,7 @@ impl CoverTree {
         }
         for (level, potential_parents) in level_to_potential_parents.iter() {
             for parent in potential_parents.iter() {
-                let distance = parent.city.distance(&p);
+                let distance = parent.point.distance(&p);
                 if distance == 0.0{
                     panic!("Attempting to insert a duplicate point into the cover tree.");
                 }
@@ -193,11 +118,15 @@ impl CoverTree {
     
 
 
-    pub fn nearest_neighbor(&self, query: &City) -> Option<(City, f32)> {
-        let mut best_candidate: Option<(City, f32)> = None;
+    pub fn nearest_neighbor(&self, query: &T) -> Option<(T, f32)> {
+        // retrieve the root node, if there is no root node, return None
+        let Some(root) = self.root.as_ref() else {
+            return None;
+        };
+        let mut best_candidate: Option<(T, f32)> = None;
 
-        let mut current_level = self.root.level.borrow().clone();
-        let mut current_cover_set = vec![self.root.clone()];
+        let mut current_level = root.level.borrow().clone();
+        let mut current_cover_set = vec![root.clone()];
         let mut last_set_min_distance = f32::MAX; // the minimum distance from the last level (current_level + 1) 's cover set to the query point
         loop {
             // filter the current set to exclude points that are too far away from the query point
@@ -207,22 +136,22 @@ impl CoverTree {
             // if the query point is a descendant of p, then distance(p, query) <= Σ_i distance(p_i, p_{i-1}) <= Σ_i 2^i for i from -∞ to l < 2^(l+1)
             // therefore, if distance(p, query) >= 2^(l+1), then the query point cannot be a descendant of p, and we can safely exclude p from the current cover set
             let current_cover_set_threshold = f32::exp2((current_level + 1) as f32) + last_set_min_distance;
-            current_cover_set.retain(|node| node.city.distance(query) < current_cover_set_threshold);
+            current_cover_set.retain(|node| node.point.distance(query) < current_cover_set_threshold);
             if current_cover_set.is_empty() {
                 break;
             }
 
             // update the best candidate based on the current cover set
             for node in current_cover_set.iter() {
-                let dist = node.city.distance(query);
-                if best_candidate.map(|(_, d)| dist < d).unwrap_or(true) {
-                    best_candidate = Some((node.city.clone(), dist));
+                let dist = node.point.distance(query);
+                if best_candidate.as_ref().map(|(_, d)| dist < *d).unwrap_or(true) {
+                    best_candidate = Some((node.point.clone(), dist));
                 }
             }
 
             // update last_set_min_distance before expanding the children
             let current_set_min_distance = current_cover_set.iter()
-                .map(|node| node.city.distance(query))
+                .map(|node| node.point.distance(query))
                 .fold(f32::MAX, |a, b| a.min(b));
             assert!(current_set_min_distance <= last_set_min_distance);
             last_set_min_distance = current_set_min_distance;
@@ -242,27 +171,31 @@ impl CoverTree {
         best_candidate
     }
 
-    pub fn remove(&mut self, target: &City) {
+    pub fn remove(&mut self, target: &T) {
+        let Some(root) = self.root.as_ref() else {
+            println!("Cover tree is empty, cannot remove target point.");
+            return;
+        };
         // first find the node to remove
-        // assume there is only one node with the target city
-        let mut level_to_cover_set: BTreeMap<i32, Vec<Weak<CoverTreeNode>>> = BTreeMap::new();
-        let root_level = self.root.level.borrow().clone();
-        level_to_cover_set.insert(root_level, vec![Rc::downgrade(&self.root)]);
+        // assume there is only one node with the target point
+        let mut level_to_cover_set: BTreeMap<i32, Vec<Weak<CoverTreeNode<T>>>> = BTreeMap::new();
+        let root_level = root.level.borrow().clone();
+        level_to_cover_set.insert(root_level, vec![Rc::downgrade(&root)]);
         let mut current_level = root_level;
-        let mut target_node: Option<Rc<CoverTreeNode>> = None;
+        let mut target_node: Option<Rc<CoverTreeNode<T>>> = None;
         loop {
             let current_cover_set = level_to_cover_set.get(&current_level).unwrap();
             if current_cover_set.is_empty() {
-                println!("Current cover set is empty at level {}, target city not found in the tree.", current_level);
+                println!("Current cover set is empty at level {}, target point not found in the tree.", current_level);
                 break;
             }
-            let mut next_cover_set: Vec<Weak<CoverTreeNode>> = Vec::new();            
+            let mut next_cover_set: Vec<Weak<CoverTreeNode<T>>> = Vec::new();            
             for node in current_cover_set.iter() {
                 for child in node.upgrade().unwrap().children.borrow().iter() {
-                    if target_node.is_none() && child.city == *target {
+                    if target_node.is_none() && child.point == *target {
                         target_node = Some(child.clone());
                     }
-                    let distance = child.city.distance(target);
+                    let distance = child.point.distance(target);
                     if distance < f32::exp2(current_level as f32) {
                         next_cover_set.push(Rc::downgrade(child));
                     }
@@ -275,7 +208,7 @@ impl CoverTree {
             current_level -= 1;
         }
         let target_level = current_level;
-        let target_node = target_node.expect("Target city not found in the cover tree.");
+        let target_node = target_node.expect("Target point not found in the cover tree.");
         let parent_node = target_node.parent.borrow().upgrade().expect("Target node has no parent, it must be the root node, which cannot be removed.");
         // take the children out of the target node
         let target_children = std::mem::take(&mut *target_node.children.borrow_mut());
@@ -291,21 +224,22 @@ impl CoverTree {
         let mut remaining_children = target_children;
         // search for the new parent level for each of the target's children
         // until all children have been re-parented to a new parent level, or there are no more levels to search for parents
-        for new_parent_level in target_level..{
+        for new_parent_level in target_level..{            
+            let root = self.root.clone().unwrap();
             // in very rare cases, like the children of the target are at the very edge of the point set, 
             // the new parent level may be greater than the current root level, in which case we need to stack a new root node on top of the current root node
-            if new_parent_level > self.root.level.borrow().clone() {
-                assert!(new_parent_level == self.root.level.borrow().clone() + 1);
+            if new_parent_level > root.level.borrow().clone() {
+                assert!(new_parent_level == root.level.borrow().clone() + 1);
                 // stack a new root node on top of the current root node, so that the children may be re-parented to the new root node
-                let new_root = CoverTreeNode::new(self.root.city.clone(), new_parent_level, Weak::new());
-                *self.root.parent.borrow_mut() = Rc::downgrade(&new_root);
-                new_root.children.borrow_mut().push(self.root.clone());
-                self.root = new_root;
+                let new_root = CoverTreeNode::new(root.point.clone(), new_parent_level, Weak::new());
+                *root.parent.borrow_mut() = Rc::downgrade(&new_root);
+                new_root.children.borrow_mut().push(root.clone());
+                self.root = Some(new_root);
             }
             // within the distance threshold, the children can be re-parented to the new parent level
             // this is because it satisfies the cover constraint
             let distance_threshold = f32::exp2(new_parent_level as f32);
-            let mut new_remaining_children: Vec<Rc<CoverTreeNode>> = Vec::new();
+            let mut new_remaining_children: Vec<Rc<CoverTreeNode<T>>> = Vec::new();
             let potential_parents = level_to_cover_set.get(&new_parent_level).unwrap();
             for child in remaining_children.iter(){
                 let mut found_new_parent = false;
@@ -314,7 +248,7 @@ impl CoverTree {
                     let Some(potential_parent) = potential_parent.upgrade() else {
                         continue;
                     };
-                    let distance = potential_parent.city.distance(&child.city);
+                    let distance = potential_parent.point.distance(&child.point);
                     if distance <= distance_threshold {
                         *child.parent.borrow_mut() = Rc::downgrade(&potential_parent);
                         potential_parent.children.borrow_mut().push(child.clone());
@@ -324,7 +258,7 @@ impl CoverTree {
                 }
                 if !found_new_parent {
                     // construct a linking node between the current child node and the greater parent level
-                    let linking_node = CoverTreeNode::new(child.city.clone(), new_parent_level, Weak::new());
+                    let linking_node = CoverTreeNode::new(child.point.clone(), new_parent_level, Weak::new());
                     *child.parent.borrow_mut() = Rc::downgrade(&linking_node);
                     linking_node.children.borrow_mut().push(child.clone());
                     new_remaining_children.push(linking_node);
@@ -337,8 +271,12 @@ impl CoverTree {
         }
     }
     pub fn print(&self) {
-        let mut current_level = self.root.level.borrow().clone();
-        let mut current_level_node_sets = vec![vec![self.root.clone()]];
+        let Some(root) = self.root.as_ref() else {
+            println!("Cover tree is empty.");
+            return;
+        };
+        let mut current_level = root.level.borrow().clone();
+        let mut current_level_node_sets = vec![vec![root.clone()]];
         while current_level_node_sets.len() > 0 {
             println!("Level {}: ", current_level);
             let mut next_level_node_sets = vec![vec![]];
@@ -347,7 +285,7 @@ impl CoverTree {
                 let mut next_level_node_set = vec![];
                 print!("[");
                 for node in node_set.iter() {
-                    print!("{:?}", node.city);
+                    print!("{:?}", node.point);
                     for child in node.children.borrow().iter() {
                         next_level_node_set.push(child.clone());
                     }
@@ -360,5 +298,43 @@ impl CoverTree {
             current_level -= 1;
         }
     }
+    pub fn assert_valid_cover_tree(&self){
+        let Some(root) = self.root.as_ref() else {
+            return;
+        };
+        let mut current_level = root.level.borrow().clone();
+        let mut current_level_nodes = Vec::new();
+        current_level_nodes.push(root.clone());
+        let mut current_level_value_set: BTreeSet<_> = current_level_nodes.iter().map(|node| node.point.clone()).collect();
+        while !current_level_nodes.is_empty() {
+            let mut next_level_nodes = Vec::new();
+            for node in current_level_nodes.iter() {
+                for child in node.children.borrow().iter() {
+                    let distance = node.point.distance(&child.point);
+                    // test the covering property
+                    assert!(distance <= f32::exp2(current_level as f32), 
+                        "Cover tree cover constraint violated: distance between parent {:?} and child {:?} is {}, which exceeds the threshold of {}", 
+                        node.point, child.point, distance, f32::exp2(current_level as f32));
+                    next_level_nodes.push(child.clone());
+                }
+            }
+            // test the separation property
+            for (i, node_a) in current_level_nodes.iter().enumerate() {
+                for node_b in current_level_nodes.iter().skip(i + 1) {
+                    let distance = node_a.point.distance(&node_b.point);
+                    assert!(distance > f32::exp2(current_level as f32), 
+                        "Cover tree separation constraint violated: distance between nodes {:?} and {:?} is {}, which does not exceed the threshold of {}", 
+                        node_a.point, node_b.point, distance, f32::exp2(current_level as f32));
+                }
+            }
+            let next_level_value_set = next_level_nodes.iter().map(|node| node.point.clone()).collect::<BTreeSet<_>>();
+            // test the nesting property
+            assert!(next_level_value_set.is_superset(&current_level_value_set));            
+           
+            // move to the next level
+            current_level_nodes = next_level_nodes;
+            current_level_value_set = next_level_value_set;
+            current_level -= 1;
+        }
+    }
 }
-
