@@ -200,7 +200,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             if i == -10 {
                 panic!("Infinite loop detected when searching for target point in cover tree.");
             }
-            
+
             let current_cover_set = level_to_cover_set
                 .get(&i)
                 .expect("Should be filled in the last iteration.");
@@ -239,7 +239,12 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                     // we have reached the lowest child level of the target node, no need to go further down
                     break;
                 } else if i - 1 < *lowest_child_level {
-                    assert!(node.non_self_descendants.borrow().is_empty(), "i - 1: {}, lowest_child_level: {}", i - 1, lowest_child_level);
+                    assert!(
+                        node.non_self_descendants.borrow().is_empty(),
+                        "i - 1: {}, lowest_child_level: {}",
+                        i - 1,
+                        lowest_child_level
+                    );
                     break;
                 }
             }
@@ -317,9 +322,9 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             assert!(highest_target_child.ancestor.borrow().upgrade().is_none()); // its parent was removed in the last step
             self.root = Some(highest_target_child.clone());
         };
-        // let target_level = target_node.level.borrow().clone();        
-        if !target_node.non_self_descendants.borrow().is_empty(){
-                assert_eq!(
+        // let target_level = target_node.level.borrow().clone();
+        if !target_node.non_self_descendants.borrow().is_empty() {
+            assert_eq!(
                 *level_to_cover_set.first_key_value().unwrap().0,
                 lowest_child_level + 1
             );
@@ -406,6 +411,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         println!("Cover tree: -------------------------------");
         let mut current_level = root.level.borrow().clone();
         let mut current_level_node_sets = vec![vec![root.clone()]];
+        let mut max_num_children = u32::MIN;
         loop {
             let mut has_remaining_children = false;
             let max_set_size = current_level_node_sets
@@ -421,6 +427,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 "Level {}: max children count: {}, num nodes: {}",
                 current_level, max_set_size, num_nodes
             );
+            max_num_children = max_num_children.max(max_set_size as u32);
             let mut next_level_node_sets: Vec<Vec<Rc<CoverTreeNode<T>>>> = vec![];
 
             for node_set in current_level_node_sets.iter() {
@@ -455,6 +462,8 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             current_level_node_sets = next_level_node_sets;
             current_level -= 1;
         }
+        println!("max number of children at any level: {}", max_num_children);
+        println!("------------------------------------------");
     }
     pub fn assert_valid_cover_tree(&self) -> Result<(), String> {
         let Some(root) = self.root.as_ref() else {

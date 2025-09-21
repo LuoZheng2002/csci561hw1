@@ -34,8 +34,8 @@ use rust::generator::ProblemGenerator;
 
 #[test]
 fn pressure_test_cover_tree_nearest_neighbor() {
-    let num_points: usize = 200;
-    let num_queries = 100;
+    let num_points: usize = 500;
+    let num_queries = 10;
 
     let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
     let mut rng = StdRng::seed_from_u64(42);
@@ -100,4 +100,57 @@ fn pressure_test_cover_tree_nearest_neighbor() {
     }
 
     assert_eq!(num_mismatches, 0, "Found {} mismatches!", num_mismatches);
+}
+#[test]
+fn pressure_test_without_verification() {
+    let num_points: usize = 10000;
+    let num_queries = 1000;
+
+    let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
+    let mut rng = StdRng::seed_from_u64(42);
+    problem.shuffle(&mut rng);
+    problem.resize(num_points, 0);
+
+    let mut tree = CoverTree::new();
+    // print!("Inserting");
+    for num in &problem {
+        tree.insert(num.clone());
+        // print!("-");
+        // if let Err(e) = tree.assert_valid_cover_tree() {
+        //     println!("Cover tree failed validation after inserting: {}", e);
+        //     tree.print();
+        //     panic!();
+        // }
+    }
+    // println!();
+    println!("Successfully inserted all points into the cover tree.");
+    
+    tree.print();
+
+    println!("Finished building the cover tree.");
+
+    // Validate structure (optional)
+    if let Err(e) = tree.assert_valid_cover_tree() {
+        panic!("Cover tree failed validation: {}", e);
+    }
+
+    print!("dists: ");
+    for (_i, query) in problem.iter().take(num_queries).enumerate() {
+        tree.remove(query);
+        // if let Err(e) = tree.assert_valid_cover_tree() {
+        //     println!("Cover tree failed validation after removing: {}", e);
+        //     tree.print();
+        //     panic!();
+        // }
+        let tree_result = tree.nearest_neighbor(query).unwrap();
+        // let same_point = &tree_result.0 == brute_result.0;
+        print!("{}, ", tree_result.1);
+        tree.insert(*query);
+        // if let Err(e) = tree.assert_valid_cover_tree() {
+        //     println!("Cover tree failed validation after inserting: {}", e);
+        //     tree.print();
+        //     panic!();
+        // }
+    }
+    println!("Done.");
 }
