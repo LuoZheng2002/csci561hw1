@@ -151,11 +151,6 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             if i == -1000 {
                 panic!("Infinite loop detected when searching for nearest neighbor in cover tree.");
             }
-            print!("Level {}: current cover set: [", i);
-            for node in current_cover_set.iter() {
-                print!("{:?}, ", node.point);
-            }
-            println!("]");
             let mut has_remaining_children = false;
 
             let mut next_cover_set: Vec<Rc<CoverTreeNode<T>>> = Vec::new();
@@ -193,7 +188,6 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
 
     pub fn remove(&mut self, target: &T) {
         let Some(root) = self.root.clone() else {
-            println!("Cover tree is empty, cannot remove target point.");
             panic!("Cover tree is empty, cannot remove target point.");
         };
         // first find the node to remove
@@ -203,17 +197,10 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         level_to_cover_set.insert(root_level, vec![Rc::downgrade(&root)]);
         let mut target_node_and_lowest_child: Option<(Rc<CoverTreeNode<T>>, i32)> = None;
         for i in (-root_level..).map(|x| -x) {
-            if i == -1000 {
+            if i == -10 {
                 panic!("Infinite loop detected when searching for target point in cover tree.");
             }
-            if let Some((_node, lowest_child_level)) = target_node_and_lowest_child.as_ref() {
-                if i - 1 == *lowest_child_level {
-                    // we have reached the lowest child level of the target node, no need to go further down
-                    break;
-                } else {
-                    assert!(i > *lowest_child_level);
-                }
-            }
+            
             let current_cover_set = level_to_cover_set
                 .get(&i)
                 .expect("Should be filled in the last iteration.");
@@ -229,15 +216,32 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                             let children = node.non_self_descendants.borrow();
                             children
                                 .iter()
-                                .map(|child| child.level.borrow().clone())
+                                .map(|child| {
+                                    assert!(
+                                        child.level.borrow().clone() < node.level.borrow().clone()
+                                    );
+                                    child.level.borrow().clone()
+                                })
                                 .min()
-                                .unwrap_or_else(|| node.level.borrow().clone())
+                                .unwrap_or_else(|| {
+                                    println!("Target node has no children.");
+                                    node.level.borrow().clone()
+                                })
                         };
                         Some((node, lowest_child))
                     } else {
                         None
                     }
                 });
+            }
+            if let Some((node, lowest_child_level)) = target_node_and_lowest_child.as_ref() {
+                if i - 1 == *lowest_child_level {
+                    // we have reached the lowest child level of the target node, no need to go further down
+                    break;
+                } else if i - 1 < *lowest_child_level {
+                    assert!(node.non_self_descendants.borrow().is_empty(), "i - 1: {}, lowest_child_level: {}", i - 1, lowest_child_level);
+                    break;
+                }
             }
             let mut has_remaining_children = true;
             assert!(!current_cover_set.is_empty());
@@ -293,7 +297,6 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             parent_children.retain(|child| !Rc::ptr_eq(child, &target_node));
             assert_eq!(num_descendants_before_removal - 1, parent_children.len());
         } else {
-            println!("Removing the root node.");
             // the target node has no parent, it must be the root node
             assert!(Rc::ptr_eq(&self.root.clone().unwrap(), &target_node));
             // drop the root node so that its reference count drops to 0 and it can be deallocated
@@ -307,11 +310,6 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 self.root = None;
                 return;
             };
-            println!(
-                "Chose {:?} as the new root node, level: {}.",
-                highest_target_child.point,
-                highest_target_child.level.borrow()
-            );
             let num_children_before = target_children.len();
             target_children.retain(|child| !Rc::ptr_eq(child, &highest_target_child));
             assert_eq!(num_children_before - 1, target_children.len());
@@ -319,25 +317,14 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             assert!(highest_target_child.ancestor.borrow().upgrade().is_none()); // its parent was removed in the last step
             self.root = Some(highest_target_child.clone());
         };
-        // let target_level = target_node.level.borrow().clone();
-        drop(target_node);
-        assert_eq!(
-            *level_to_cover_set.first_key_value().unwrap().0,
-            lowest_child_level + 1
-        );
-
-        println!("Cover sets:");
-        for (level, cover_set) in level_to_cover_set.iter() {
-            print!("level {}: [", level);
-            for weak_node in cover_set.iter() {
-                if let Some(node) = weak_node.upgrade() {
-                    print!("{:?}, ", node.point);
-                } else {
-                    print!("(dead), ");
-                }
-            }
-            println!("] ");
+        // let target_level = target_node.level.borrow().clone();        
+        if !target_node.non_self_descendants.borrow().is_empty(){
+                assert_eq!(
+                *level_to_cover_set.first_key_value().unwrap().0,
+                lowest_child_level + 1
+            );
         }
+        drop(target_node);
 
         // let mut remaining_children = target_children;
 
@@ -345,10 +332,8 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         // until all children have been re-parented to a new parent level, or there are no more levels to search for parents
         for child in target_children.iter() {
             let mut valid_parent_and_parent_level: Option<(Rc<CoverTreeNode<T>>, i32)> = None;
-            println!("Reparenting child {:?}", child.point);
             let child_level = child.level.borrow().clone();
             for new_parent_level in child_level + 1.. {
-                println!("Searching for parent at level {}", new_parent_level);
                 if let Some(potential_parents) = level_to_cover_set.get(&new_parent_level) {
                     // within the distance threshold, the children can be re-parented to the new parent level
                     // this is because it satisfies the cover constraint
@@ -356,29 +341,15 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                     for potential_parent in potential_parents.iter() {
                         // parents may be invalidated because we just removed the target node from the tree
                         let Some(potential_parent) = potential_parent.upgrade() else {
-                            println!("Skipping a dead node");
                             continue;
                         };
                         let distance = potential_parent.point.distance(&child.point);
                         if distance <= distance_threshold {
-                            println!(
-                                "child {:?} reparented to parent {:?} at level {}",
-                                child.point, potential_parent.point, new_parent_level
-                            );
                             valid_parent_and_parent_level =
                                 Some((potential_parent, new_parent_level));
                             break;
                         }
-                        println!(
-                            "Potential parent {:?} at level {} is too far away from child {:?}, distance: {}, threshold: {}",
-                            potential_parent.point,
-                            new_parent_level,
-                            child.point,
-                            distance,
-                            distance_threshold
-                        );
                     }
-                    println!("No non-root parent found at level {}", new_parent_level);
                 }
                 // if we did not find a valid parent, use root as fallback
                 valid_parent_and_parent_level = valid_parent_and_parent_level.or_else(|| {
@@ -390,28 +361,12 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                         let mut root_level = root.level.borrow_mut();
                         if new_parent_level > *root_level {
                             *root_level = (*root_level).max(new_parent_level);
-                            println!(
-                                "Increased root level to {} because of child {:?}",
-                                *root_level, child.point
-                            );
                         }
                     }
                     let distance = root.point.distance(&child.point);
                     if distance <= f32::exp2(new_parent_level as f32) {
-                        println!(
-                            "child {:?} reparented to root {:?} at level {}",
-                            child.point, root.point, new_parent_level
-                        );
                         Some((root, new_parent_level))
                     } else {
-                        println!(
-                            "Root node {:?} at level {} is too far away from child {:?}, distance: {}, threshold: {}",
-                            root.point,
-                            new_parent_level,
-                            child.point,
-                            distance,
-                            f32::exp2(new_parent_level as f32)
-                        );
                         None
                     }
                 });
@@ -425,50 +380,11 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             *child.ancestor.borrow_mut() = Rc::downgrade(&valid_parent);
             let old_child_level = child.level.borrow().clone();
             let new_child_level = valid_parent_level - 1;
-            print!("filling child {:?} on levels: ", child.point);
             for child_covered_level in old_child_level + 1..=new_child_level {
-                print!("{}, ", child_covered_level);
                 let cover_set = level_to_cover_set.entry(child_covered_level).or_default();
                 cover_set.push(Rc::downgrade(child));
             }
-            println!();
-            for level in lowest_child_level + 1..=root_level {
-                print!("level {}: [", level);
-                let cover_set = level_to_cover_set.get(&level).unwrap();
-                for weak_node in cover_set.iter() {
-                    if let Some(node) = weak_node.upgrade() {
-                        print!("{:?}, ", node.point);
-                    } else {
-                        print!("(dead), ");
-                    }
-                }
-                println!("] ");
-            }
-            
-
-            // {
-            //     let cover_set_prev_level = level_to_cover_set
-            //     .get_mut(&new_child_level)
-            //     .expect("The cover set at the new parent level - 1 must exist because it contains the child itself.");
-            //     cover_set_prev_level.retain(|weak_node| {
-            //         let Some(node) = weak_node.upgrade() else {
-            //             return false;
-            //         };
-            //         !Rc::ptr_eq(&node, child)
-            //     });
-            // }
-            // {
-            //     let cover_set_new_level = level_to_cover_set.entry(new_child_level).or_default();
-            //     cover_set_new_level.push(Rc::downgrade(child));
-            // }
-            // let mut child_level = child.level.borrow_mut();
-            // *child_level = new_child_level;
             *child.level.borrow_mut() = new_child_level;
-            println!(
-                "Set child {:?} level to {}",
-                child.point,
-                child.level.borrow().clone()
-            );
             // assert level
             assert!(
                 valid_parent.level.borrow().clone() > child.level.borrow().clone(),
@@ -480,8 +396,6 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 .non_self_descendants
                 .borrow_mut()
                 .push(child.clone());
-            println!("After filling a child {:?}:", child.point);
-            self.print();
         }
     }
     pub fn print(&self) {

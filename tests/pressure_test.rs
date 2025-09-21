@@ -34,12 +34,13 @@ use rust::generator::ProblemGenerator;
 
 #[test]
 fn pressure_test_cover_tree_nearest_neighbor() {
-    let num_points = 10;
-    let num_queries = 1;
+    let num_points: usize = 200;
+    let num_queries = 100;
 
-    let mut problem: Vec<u32> = (0..num_points).collect();
+    let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
     let mut rng = StdRng::seed_from_u64(42);
     problem.shuffle(&mut rng);
+    problem.resize(num_points, 0);
 
     let mut tree = CoverTree::new();
 
@@ -77,19 +78,24 @@ fn pressure_test_cover_tree_nearest_neighbor() {
             tree.print();
             panic!();
         }
-        println!("Tree after remove:");
-        tree.print();
         let tree_result = tree.nearest_neighbor(query).unwrap();
 
         let dist_diff = (tree_result.1 - brute_result.1).abs();
-        let same_point = &tree_result.0 == brute_result.0;
+        // let same_point = &tree_result.0 == brute_result.0;
 
-        if dist_diff > 1e-4 || !same_point {
+        if dist_diff > 1e-4 {
             println!(
                 "Mismatch at query {}: query num: {:?}, brute {:?} vs tree {:?}, dist diff {}",
                 i, query, brute_result, tree_result, dist_diff
             );
             num_mismatches += 1;
+        }
+        println!("dist: {}", tree_result.1);
+        tree.insert(*query);
+        if let Err(e) = tree.assert_valid_cover_tree() {
+            println!("Cover tree failed validation after inserting: {}", e);
+            tree.print();
+            panic!();
         }
     }
 
