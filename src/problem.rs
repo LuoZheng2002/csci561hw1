@@ -1,6 +1,8 @@
 use core::f32;
 use std::{
     cell::RefCell,
+    cmp::Ordering,
+    collections::BinaryHeap,
     rc::{Rc, Weak},
 };
 
@@ -21,6 +23,40 @@ pub struct City {
     pub z: u32,
 }
 
+#[derive(Clone)]
+pub struct RcKey<T>(Rc<T>);
+
+impl<T> RcKey<T> {
+    pub fn new(inner: Rc<T>) -> Self {
+        RcKey(inner)
+    }
+    pub fn rc(&self) -> &Rc<T> {
+        &self.0
+    }
+}
+
+impl<T> PartialEq for RcKey<T> {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl<T> Eq for RcKey<T> {}
+
+impl<T> PartialOrd for RcKey<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for RcKey<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Compare the raw pointer addresses
+        // self.0.as_ptr().cmp(&other.0.as_ptr())
+        Rc::as_ptr(&self.0).cmp(&Rc::as_ptr(&other.0))
+    }
+}
+
 // impl City {
 //     pub fn dist2(&self, other: &Self) -> f32 {
 //         (self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2)
@@ -29,9 +65,9 @@ pub struct City {
 
 impl Distance for City {
     fn distance(&self, other: &Self) -> f32 {
-        let dx = self.x - other.x;
-        let dy = self.y - other.y;
-        let dz = self.z - other.z;
+        let dx = self.x as i32 - other.x as i32;
+        let dy = self.y as i32 - other.y as i32;
+        let dz = self.z as i32 - other.z as i32;
         ((dx * dx + dy * dy + dz * dz) as f32).sqrt()
     }
 }
@@ -56,31 +92,34 @@ pub struct Solution {
     pub order: Vec<u32>,
     pub problem: Weak<Problem>,
     total_distance: RefCell<Option<f32>>,
-    pub id: usize,
 }
 
 impl Solution {
     pub fn new(
-        order: Vec<u32>,
+        order_without_loop: Vec<u32>,
         problem: Weak<Problem>,
-        id_iter: &mut dyn Iterator<Item = usize>,
         total_distance: Option<f32>,
     ) -> Self {
         Self {
-            order,
+            order: order_without_loop,
             problem,
             total_distance: RefCell::new(total_distance),
-            id: id_iter.next().unwrap(),
         }
     }
     pub fn is_valid(&self, num_cities: u32) -> bool {
         if self.order.len() != num_cities as usize {
+            println!(
+                "Length mismatch: expected {}, got {}",
+                num_cities,
+                self.order.len()
+            );
             return false;
         }
         // check for duplicates
         let mut seen = vec![false; num_cities as usize];
         for &city in &self.order {
             if city >= num_cities || seen[city as usize] {
+                println!("Invalid city index or duplicate: {}", city);
                 return false;
             }
             seen[city as usize] = true;
@@ -110,29 +149,26 @@ impl Solution {
     //     *fitness = Some(new_fitness);
     //     new_fitness
     // }
-    pub fn from_random_shuffle(
-        problem: &Rc<Problem>,
-        rng: &mut impl Rng,
-        id_iter: &mut dyn Iterator<Item = usize>,
-    ) -> Self {
+    pub fn from_random_shuffle(problem: &Rc<Problem>, rng: &mut impl Rng) -> Self {
         let num_cities = problem.cities.len();
         let mut order: Vec<u32> = (0..num_cities as u32).collect();
         order.shuffle(rng);
-        Self::new(order, Rc::downgrade(problem), id_iter, None)
+        Self::new(order, Rc::downgrade(problem), None)
     }
 
-    pub fn from_nearest_neighbor(
-        problem: &Rc<Problem>,
-        id_iter: &mut dyn Iterator<Item = usize>,
-    ) -> Self {
+    pub fn from_nearest_neighbor(problem: &Rc<Problem>, start_index: usize) -> Self {
+        assert!(start_index < problem.cities.len());
         let mut cover_tree = CoverTree::new();
-        for (i, city) in problem.cities.iter().enumerate().skip(1) {
-            cover_tree.insert(*city, i as u32);
-        }
-        let initial_city = problem.cities[0];
+        let offset = start_index;
+        let initial_city = problem.cities[offset];
         let mut current_city = initial_city;
         let mut total_distance = 0.0;
-        let mut ordered_cities = vec![0];
+        let mut ordered_cities = vec![offset as u32];
+        // populate the cover tree
+        for (i, city) in problem.cities.iter().enumerate() {
+            cover_tree.insert(*city, i as u32);
+        }
+        cover_tree.remove(&initial_city);
         for _ in 0..problem.cities.len() - 1 {
             let (nearest_city, index, distance) =
                 cover_tree.nearest_neighbor(&current_city).unwrap();
@@ -144,16 +180,11 @@ impl Solution {
             current_city = nearest_city;
         }
         assert!(cover_tree.is_empty());
-        ordered_cities.push(0);
+        // ordered_cities.push(0);
         total_distance += current_city.distance(&initial_city);
-        Self::new(
-            ordered_cities,
-            Rc::downgrade(problem),
-            id_iter,
-            Some(total_distance),
-        )
+        Self::new(ordered_cities, Rc::downgrade(problem), Some(total_distance))
     }
-    pub fn targeted_two_opt(&self, id_iter: &mut dyn Iterator<Item = usize>) -> Self {
+    pub fn targeted_two_opt(&self) -> Self {
         let problem = self.problem.upgrade().expect("Problem has been dropped");
         let mut best_order = self.order.clone();
         // let mut best_distance = self.total_distance();
@@ -181,12 +212,8 @@ impl Solution {
                 let new_cost = city_a.distance(city_end) + city_b.distance(city_start);
                 if new_cost < current_cost {
                     best_order[0..=i].reverse();
-                    let new_solution = Solution::new(
-                        best_order.clone(),
-                        Rc::downgrade(&problem),
-                        &mut (0..),
-                        None,
-                    );
+                    let new_solution =
+                        Solution::new(best_order.clone(), Rc::downgrade(&problem), None);
                     let new_distance = new_solution.total_distance();
                     assert!(self.total_distance() - current_cost == new_distance - new_cost);
                     found_shorter = true;
@@ -201,19 +228,15 @@ impl Solution {
                 break;
             }
         }
-        Solution::new(best_order, Rc::downgrade(&problem), id_iter, None)
+        Solution::new(best_order, Rc::downgrade(&problem), None)
     }
 
-    pub fn from_brute_force(
-        problem: &Rc<Problem>,
-        id_iter: &mut dyn Iterator<Item = usize>,
-    ) -> Self {
+    pub fn from_brute_force(problem: &Rc<Problem>) -> Self {
         let cities = &problem.cities;
         if cities.len() <= 1 {
             return Solution::new(
                 (0..cities.len() as u32).collect(),
                 Rc::downgrade(problem),
-                id_iter,
                 Some(0.0),
             );
         }
@@ -243,20 +266,15 @@ impl Solution {
                 best_order = candidate;
             }
         }
-        Solution::new(
-            best_order,
-            Rc::downgrade(&problem),
-            id_iter,
-            Some(best_distance),
-        )
+        Solution::new(best_order, Rc::downgrade(&problem), Some(best_distance))
     }
 }
 
 pub struct Population {
     pub solutions: Vec<Rc<Solution>>,
+    roulette: RefCell<Option<WeightedIndex<f32>>>,
     max_length: RefCell<Option<f32>>,
     min_length: RefCell<Option<f32>>,
-    roulette: RefCell<Option<WeightedIndex<f32>>>,
 }
 
 impl Population {
@@ -287,19 +305,6 @@ impl Population {
         (max_length - total_length + epsilon) / (max_length - min_length + epsilon)
     }
     fn calculate_roulette(&self) -> WeightedIndex<f32> {
-        // let (min_length, max_length) = {
-        //     let mut min_length = self.min_length.borrow_mut();
-        //     let mut max_length = self.max_length.borrow_mut();
-        //     match (min_length.as_ref(), max_length.as_ref()) {
-        //         (Some(min_length), Some(max_length)) => (*min_length, *max_length),
-        //         _ => {
-        //             let (new_min_length, new_max_length) = self.get_min_max();
-        //             *min_length = Some(new_min_length);
-        //             *max_length = Some(new_max_length);
-        //             (new_min_length, new_max_length)
-        //         }
-        //     }
-        // };
         let mut min_length = self.min_length.borrow_mut();
         let mut max_length = self.max_length.borrow_mut();
         if min_length.is_none() || max_length.is_none() {
@@ -323,20 +328,10 @@ impl Population {
         // println!("Fitnesses: {:?}", fitnesses);
         WeightedIndex::new(fitnesses).expect("Failed to create WeightedIndex")
     }
-    pub fn from_random_shuffle(
-        problem: &Rc<Problem>,
-        size: usize,
-        rng: &mut impl Rng,
-        id_iter: &mut dyn Iterator<Item = usize>,
-    ) -> Self {
+    pub fn from_random_shuffle(problem: &Rc<Problem>, size: usize, rng: &mut impl Rng) -> Self {
         let solutions = (0..size)
             .map(|_| {
-                let solution = Solution::from_random_shuffle(problem, rng, id_iter);
-                println!(
-                    "From random shuffle: id: {}, total_length: {}",
-                    solution.id,
-                    solution.total_distance()
-                );
+                let solution = Solution::from_random_shuffle(problem, rng);
                 Rc::new(solution)
             })
             .collect();

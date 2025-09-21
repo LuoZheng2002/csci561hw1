@@ -1,8 +1,8 @@
 use ordered_float::NotNan;
 use rand::distr::Uniform;
 use rand::prelude::*;
-use std::cell::RefCell;
 use std::f64::consts::PI;
+use std::{cell::RefCell, collections::BTreeSet};
 
 use crate::problem::{City, Problem};
 
@@ -32,8 +32,8 @@ fn generate_point_in_sphere(max_radius: f32, dist: &Uniform<f32>, rng: &mut impl
     City { x, y, z }
 }
 impl ProblemGenerator {
-    pub fn new(num_cities: usize, max_radius: f32) -> Self {
-        let rng = StdRng::seed_from_u64(42);
+    pub fn new(num_cities: usize, max_radius: f32, seed: u64) -> Self {
+        let rng = StdRng::seed_from_u64(seed);
         Self {
             num_cities,
             max_radius,
@@ -43,9 +43,13 @@ impl ProblemGenerator {
     pub fn generate_problem(&self) -> Problem {
         let mut rng = self.rng.borrow_mut();
         let dist = Uniform::new(0.0, 1.0).unwrap();
-        let cities = (0..self.num_cities)
-            .map(|_| generate_point_in_sphere(self.max_radius, &dist, &mut *rng))
-            .collect();
+        let mut cities: BTreeSet<City> = BTreeSet::new();
+        while cities.len() < self.num_cities {
+            let city = generate_point_in_sphere(self.max_radius, &dist, &mut *rng);
+            cities.insert(city);
+        }
+        let mut cities = cities.into_iter().collect::<Vec<_>>();
+        cities.shuffle(&mut *rng);
         Problem { cities }
     }
 }
