@@ -1,35 +1,60 @@
 use core::f32;
-use std::{cell::RefCell, rc::{Rc, Weak}};
+use std::{
+    cell::RefCell,
+    rc::{Rc, Weak},
+};
 
 use ordered_float::NotNan;
-use rand::{distr::{weighted::WeightedIndex, Distribution}, seq::SliceRandom, Rng};
+use rand::{
+    Rng,
+    distr::{Distribution, weighted::WeightedIndex},
+    seq::SliceRandom,
+};
 
-use crate::{cover_tree::CoverTree};
+use crate::cover_tree::{CoverTree, Distance};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct City{
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct City {
     pub x: NotNan<f32>,
     pub y: NotNan<f32>,
     pub z: NotNan<f32>,
 }
 
-impl City{
+impl City {
     pub fn dist2(&self, other: &Self) -> f32 {
-        (self.x - other.x).powi(2) +
-        (self.y - other.y).powi(2) +
-        (self.z - other.z).powi(2)
+        (self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2)
     }
     pub fn distance(&self, other: &Self) -> f32 {
         self.dist2(other).sqrt()
     }
 }
 
-pub struct Problem{
+impl Distance for City {
+    fn distance(&self, other: &Self) -> f32 {
+        let dx = self.x.into_inner() - other.x.into_inner();
+        let dy = self.y.into_inner() - other.y.into_inner();
+        let dz = self.z.into_inner() - other.z.into_inner();
+        (dx * dx + dy * dy + dz * dz).sqrt()
+    }
+}
+impl std::fmt::Display for City {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:.0}, {:.0}, {:.0})", self.x, self.y, self.z)
+    }
+}
+
+impl std::fmt::Debug for City {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:.0}, {:.0}, {:.0})", self.x, self.y, self.z)
+    }
+}
+
+pub struct Problem {
     pub cities: Vec<City>,
 }
 
 #[derive(Clone)]
-pub struct Solution{
+pub struct Solution {
     pub order: Vec<usize>,
     pub problem: Weak<Problem>,
     total_length: RefCell<Option<f32>>,
@@ -37,9 +62,10 @@ pub struct Solution{
 }
 
 impl Solution {
-    pub fn new(order: Vec<usize>, 
-        problem: Weak<Problem>, 
-        id_iter: &mut dyn Iterator<Item = usize>
+    pub fn new(
+        order: Vec<usize>,
+        problem: Weak<Problem>,
+        id_iter: &mut dyn Iterator<Item = usize>,
     ) -> Self {
         Self {
             order,
@@ -75,7 +101,7 @@ impl Solution {
             let dist = ((city_a.x - city_b.x).powi(2)
                 + (city_a.y - city_b.y).powi(2)
                 + (city_a.z - city_b.z).powi(2))
-                .sqrt();
+            .sqrt();
             new_total_length += dist;
         }
         *total_length = Some(new_total_length);
@@ -88,26 +114,30 @@ impl Solution {
     //     *fitness = Some(new_fitness);
     //     new_fitness
     // }
-    pub fn from_random_shuffle(problem: &Rc<Problem>, rng: &mut impl Rng, id_iter: &mut dyn Iterator<Item = usize>) -> Self {
+    pub fn from_random_shuffle(
+        problem: &Rc<Problem>,
+        rng: &mut impl Rng,
+        id_iter: &mut dyn Iterator<Item = usize>,
+    ) -> Self {
         let num_cities = problem.cities.len();
         let mut order: Vec<usize> = (0..num_cities).collect();
         order.shuffle(rng);
         Self::new(order, Rc::downgrade(problem), id_iter)
     }
 
-    pub fn from_nearest_neighbor(problem: &Rc<Problem>){
+    pub fn from_nearest_neighbor(problem: &Rc<Problem>) {
         // let cover_tree = CoverTree::new()
     }
 }
 
-pub struct Population{
+pub struct Population {
     pub solutions: Vec<Rc<Solution>>,
     max_length: RefCell<Option<f32>>,
     min_length: RefCell<Option<f32>>,
     roulette: RefCell<Option<WeightedIndex<f32>>>,
 }
 
-impl Population{
+impl Population {
     pub fn new(solutions: Vec<Rc<Solution>>) -> Self {
         Self {
             solutions,
@@ -116,7 +146,7 @@ impl Population{
             roulette: RefCell::new(None),
         }
     }
-    fn get_min_max(&self) -> (f32, f32){
+    fn get_min_max(&self) -> (f32, f32) {
         let mut min_length = f32::MAX;
         let mut max_length = f32::MIN;
         for solution in &self.solutions {
@@ -159,19 +189,32 @@ impl Population{
         let max_length = max_length.unwrap();
         // println!("Min length: {}, Max length: {}", min_length, max_length);
         // calculate unnormalized fitnesses
-        let fitnesses = self.solutions.iter().map(|solution| {
-            let length = solution.total_length();
-            Self::calculate_fitness(length, min_length, max_length)
-        }).collect::<Vec<_>>();
+        let fitnesses = self
+            .solutions
+            .iter()
+            .map(|solution| {
+                let length = solution.total_length();
+                Self::calculate_fitness(length, min_length, max_length)
+            })
+            .collect::<Vec<_>>();
         // weighted index will normalize the fitnesses for us
         // println!("Fitnesses: {:?}", fitnesses);
         WeightedIndex::new(fitnesses).expect("Failed to create WeightedIndex")
     }
-    pub fn from_random_shuffle(problem: &Rc<Problem>, size: usize, rng: &mut impl Rng, id_iter: &mut dyn Iterator<Item = usize>) -> Self {
+    pub fn from_random_shuffle(
+        problem: &Rc<Problem>,
+        size: usize,
+        rng: &mut impl Rng,
+        id_iter: &mut dyn Iterator<Item = usize>,
+    ) -> Self {
         let solutions = (0..size)
             .map(|_| {
                 let solution = Solution::from_random_shuffle(problem, rng, id_iter);
-                println!("From random shuffle: id: {}, total_length: {}", solution.id, solution.total_length());
+                println!(
+                    "From random shuffle: id: {}, total_length: {}",
+                    solution.id,
+                    solution.total_length()
+                );
                 Rc::new(solution)
             })
             .collect();
@@ -184,10 +227,14 @@ impl Population{
         self.solutions[index].clone()
     }
     pub fn best_solution(&self) -> Rc<Solution> {
-        self.solutions.iter().min_by(|a, b| {
-            a.total_length()
-                .partial_cmp(&b.total_length())
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }).expect("Population has no solutions").clone()
+        self.solutions
+            .iter()
+            .min_by(|a, b| {
+                a.total_length()
+                    .partial_cmp(&b.total_length())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .expect("Population has no solutions")
+            .clone()
     }
 }
