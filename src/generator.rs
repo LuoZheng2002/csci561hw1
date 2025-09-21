@@ -1,6 +1,6 @@
 use ordered_float::NotNan;
 use rand::distr::Uniform;
-use rand::{prelude::*};
+use rand::prelude::*;
 use std::cell::RefCell;
 use std::f64::consts::PI;
 
@@ -25,13 +25,13 @@ fn generate_point_in_sphere(max_radius: f32, dist: &Uniform<f32>, rng: &mut impl
     let y = r * phi.sin() * theta.sin();
     let z = r * phi.cos();
 
-    let x = NotNan::new(x).unwrap();
-    let y = NotNan::new(y).unwrap();
-    let z = NotNan::new(z).unwrap();
+    let x = x as u32;
+    let y = y as u32;
+    let z = z as u32;
 
     City { x, y, z }
 }
-impl ProblemGenerator{
+impl ProblemGenerator {
     pub fn new(num_cities: usize, max_radius: f32) -> Self {
         let rng = StdRng::seed_from_u64(42);
         Self {
@@ -40,7 +40,7 @@ impl ProblemGenerator{
             rng: RefCell::new(rng),
         }
     }
-    pub fn generate_problem(&self) -> Problem{
+    pub fn generate_problem(&self) -> Problem {
         let mut rng = self.rng.borrow_mut();
         let dist = Uniform::new(0.0, 1.0).unwrap();
         let cities = (0..self.num_cities)

@@ -16,23 +16,23 @@ use crate::cover_tree::{CoverTree, Distance};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct City {
-    pub x: NotNan<f32>,
-    pub y: NotNan<f32>,
-    pub z: NotNan<f32>,
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
 }
 
-impl City {
-    pub fn dist2(&self, other: &Self) -> f32 {
-        (self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2)
-    }
-}
+// impl City {
+//     pub fn dist2(&self, other: &Self) -> f32 {
+//         (self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2)
+//     }
+// }
 
 impl Distance for City {
     fn distance(&self, other: &Self) -> f32 {
-        let dx = self.x.into_inner() - other.x.into_inner();
-        let dy = self.y.into_inner() - other.y.into_inner();
-        let dz = self.z.into_inner() - other.z.into_inner();
-        (dx * dx + dy * dy + dz * dz).sqrt()
+        let dx = self.x - other.x;
+        let dy = self.y - other.y;
+        let dz = self.z - other.z;
+        ((dx * dx + dy * dy + dz * dz) as f32).sqrt()
     }
 }
 impl std::fmt::Display for City {
@@ -97,10 +97,7 @@ impl Solution {
         for i in 0..self.order.len() {
             let city_a = &problem.cities[self.order[i] as usize];
             let city_b = &problem.cities[self.order[(i + 1) % self.order.len()] as usize];
-            let dist = ((city_a.x - city_b.x).powi(2)
-                + (city_a.y - city_b.y).powi(2)
-                + (city_a.z - city_b.z).powi(2))
-            .sqrt();
+            let dist = city_a.distance(city_b);
             new_total_length += dist;
         }
         *total_length = Some(new_total_length);
