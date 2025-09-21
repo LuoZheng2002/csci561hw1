@@ -41,7 +41,14 @@ impl std::fmt::Debug for Point2D {
             Point2D { x: 1, y: 1 },
         ];
         for p in &points {
+            tree.print();
+            println!("Inserting point: {}", p);
             tree.insert(p.clone());
+            if let Err(e) = tree.assert_valid_cover_tree() {
+                println!("Cover tree validation failed after inserting point {}: {}", p, e);
+                tree.print();
+                panic!();
+            }
         }
 
         let query = Point2D { x: 0, y: 1 };

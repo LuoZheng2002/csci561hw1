@@ -90,29 +90,38 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         level_to_potential_parents.insert(root_level, vec![root.clone()]);
         // populates the potential parents at each level, until there is no more potential parents to explore
         for i in (-root_level..).map(|x| -x){ // an iterator that counts down from root_level
+            if i == -1000{
+                panic!("Infinite loop detected when inserting point into cover tree.");
+            }
             let current_potential_parents = level_to_potential_parents.get(&i).unwrap();
             let mut next_potential_parents: Vec<Rc<CoverTreeNode<T>>> = Vec::new();
             // filter out the children of current potential parents to be the next potential parents
+            // let mut has_remaining_children = false;
             for parent in current_potential_parents.iter() {
                 // push parent itself as a potential parent at the next level
                 // for each child of a parent, if the child's level is i-1, and the distance between the child and the new point p is <= 2^i, then the child is a potential parent at level i-1
                 next_potential_parents.push(parent.clone());
                 let children = parent.non_self_descendants.borrow();
                 for child in children.iter() {
-                    if child.level.borrow().clone() != i - 1 {
-                        assert!(child.level.borrow().clone() < i - 1);
-                        continue;
+                    let child_level = child.level.borrow().clone();
+                    if child_level == i - 1 {
+                        // needs to be pushed to the next potential parents if it satisfies the cover constraint
+                        let distance = child.point.distance(&p);
+                        // distance <= Σ...
+                        if distance < f32::exp2(i as f32) {                        
+                            next_potential_parents.push(child.clone());
+                        }
                     }
-                    let distance = child.point.distance(&p);
-                    // distance <= Σ...
-                    if distance < f32::exp2(i as f32) {
-                        next_potential_parents.push(child.clone());
+                    if child_level <= i - 1 {
+                        // has_remaining_children = true;
                     }
                 }
             }
-            if current_potential_parents.is_empty(){
-                break;
-            }
+            
+
+            // if !has_remaining_children{
+            //     break;
+            // }
             level_to_potential_parents.insert(i - 1, next_potential_parents);
         }
         // find the most suitable parent from bottom to top
@@ -145,7 +154,12 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         let root_level = root.level.borrow().clone();
         let mut current_cover_set = vec![root.clone()];
         let mut last_set_min_distance = f32::MAX; // the minimum distance from the last level (current_level + 1) 's cover set to the query point
+        
         for i in (-root_level..).map(|x| -x) {
+            if i == -1000{
+                panic!("Infinite loop detected when searching for nearest neighbor in cover tree.");
+            }
+            let mut has_remaining_children = true;
             // filter the current set to exclude points that are too far away from the query point
 
             // the threashold is based on the maximum possible sum of deviation of the assumed query point from the nodes in the current set
@@ -153,11 +167,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             // if the query point is a descendant of p, then distance(p, query) <= Σ_i distance(p_i, p_{i-1}) <= Σ_i 2^i for i from -∞ to l < 2^(l+1)
             // therefore, if distance(p, query) >= 2^(l+1), then the query point cannot be a descendant of p, and we can safely exclude p from the current cover set
             let current_cover_set_threshold = f32::exp2((i + 1) as f32) + last_set_min_distance;
-            current_cover_set.retain(|node| node.point.distance(query) < current_cover_set_threshold);
-            if current_cover_set.is_empty() {
-                break;
-            }
-
+            current_cover_set.retain(|node| node.point.distance(query) < current_cover_set_threshold);            
             // update the best candidate based on the current cover set
             for node in current_cover_set.iter() {
                 let dist = node.point.distance(query);
@@ -170,7 +180,8 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             let current_set_min_distance = current_cover_set.iter()
                 .map(|node| node.point.distance(query))
                 .fold(f32::MAX, |a, b| a.min(b));
-            assert!(current_set_min_distance <= last_set_min_distance);
+            println!("Current cover set size: {}", current_cover_set.len());
+            assert!(current_set_min_distance <= last_set_min_distance, "current: {}, last: {}", current_set_min_distance, last_set_min_distance);
             last_set_min_distance = current_set_min_distance;
 
             // expand the children
@@ -181,17 +192,22 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 // push all children of the node as potential candidates at the next level
                 let children = node.non_self_descendants.borrow();
                 for child in children.iter() {
-                    if child.level.borrow().clone() != i - 1 {
-                        assert!(child.level.borrow().clone() < i - 1);
-                        continue;
+                    let child_level = child.level.borrow().clone();
+                    if child_level == i - 1 {
+                        next_cover_set.push(child.clone());
                     }
-                    next_cover_set.push(child.clone());
+                    if child_level <= i - 1 {
+                        has_remaining_children = true;
+                    }
                 }
+            }
+            if !has_remaining_children{
+                break;
             }
             // move to the next level
             current_cover_set = next_cover_set;
         }
-        Some(best_candidate.unwrap())
+        Some(best_candidate.expect("Reached the bottom of the cover tree but no candidate found, which should not happen."))
     }
 
     pub fn remove(&mut self, target: &T) {
@@ -204,8 +220,12 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         let mut level_to_cover_set: BTreeMap<i32, Vec<Weak<CoverTreeNode<T>>>> = BTreeMap::new();
         let root_level = root.level.borrow().clone();
         level_to_cover_set.insert(root_level, vec![Rc::downgrade(&root)]);
-        let mut target_node: Option<Rc<CoverTreeNode<T>>> = None;
+        let mut target_node: Option<Rc<CoverTreeNode<T>>> = None;        
         for i in (-root_level..).map(|x| -x) {
+            if i == -1000{
+                panic!("Infinite loop detected when searching for target point in cover tree.");
+            }
+            let mut has_remaining_children = true;
             let current_cover_set = level_to_cover_set.get(&i).expect("Cannot find the query, reached the bottom of the tree.");
             assert!(!current_cover_set.is_empty());
             let mut next_cover_set: Vec<Weak<CoverTreeNode<T>>> = Vec::new();
@@ -222,18 +242,24 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                         assert!(target_node.is_none(), "Found multiple nodes with the target point, which should not happen in a valid cover tree.");
                         target_node = Some(child.clone());
                     }
-                    if child.level.borrow().clone() != i - 1 {
-                        assert!(child.level.borrow().clone() < i - 1);
-                        continue;
+                    let child_level = child.level.borrow().clone();
+                    if child_level == i - 1 {
+                        let distance = child.point.distance(target);
+                        if distance < f32::exp2(i as f32) {
+                            next_cover_set.push(Rc::downgrade(child));
+                        }
                     }
-                    let distance = child.point.distance(target);
-                    if distance < f32::exp2(i as f32) {
-                        next_cover_set.push(Rc::downgrade(child));
+                    if child_level <= i - 1 {
+                        has_remaining_children = true;
                     }
                 }
             }            
             level_to_cover_set.insert(i - 1, next_cover_set);
             if target_node.is_some() {
+                break;
+            }
+            if !has_remaining_children{
+                println!("Reached the bottom of the cover tree but cannot find the target point.");
                 break;
             }
         }
@@ -324,7 +350,8 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         };
         let mut current_level = root.level.borrow().clone();
         let mut current_level_node_sets = vec![vec![root.clone()]];
-        while current_level_node_sets.len() > 0 {
+        loop {
+            let mut has_remaining_children = false;
             println!("Level {}: ", current_level);
             let mut next_level_node_sets: Vec<Vec<Rc<CoverTreeNode<T>>>> = vec![];
             
@@ -335,16 +362,27 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                     // print current node point
                     print!("{:?}, ", node.point);
                     // prepare next level node set
-                    let mut next_level_node_set = vec![];                    
+                    let mut next_level_node_set = vec![];
+                    // add the node itself to the next level node set
+                    next_level_node_set.push(node.clone());
                     for child in node.non_self_descendants.borrow().iter() {
-                        next_level_node_set.push(child.clone());
+                        let child_level = child.level.borrow().clone();
+                        if child_level == current_level - 1 {
+                            next_level_node_set.push(child.clone());
+                        }
+                        if child_level <= current_level - 1 {
+                            has_remaining_children = true;
+                        }
                     }
                     if !next_level_node_set.is_empty() {
                         next_level_node_sets.push(next_level_node_set);
                     }
                 }
-                print!("]");
-                println!();                
+                print!("]");                            
+            }
+            println!();    
+            if !has_remaining_children{
+                break;
             }
             current_level_node_sets = next_level_node_sets;
             current_level -= 1;
@@ -356,37 +394,51 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         };
         let root_level = root.level.borrow().clone();
         let mut current_level_nodes = vec![root.clone()];
-        for i in (-root_level..).map(|x| -x) {
+        for current_level in (-root_level..).map(|x| -x) {
+            let mut has_remaining_children = false;
+            if current_level == -1000{
+                panic!("Infinite loop detected when validating cover tree.");
+            }
             if current_level_nodes.is_empty(){
                 break;
             }
             let mut next_level_nodes = Vec::new();
             for node in current_level_nodes.iter() {
-                assert!(node.level.borrow().clone() >= i, "Node level is less than current level.");
+                println!("current level: {}, node level: {}", current_level, node.level.borrow().clone());
+                assert!(node.level.borrow().clone() >= current_level, "Node level is less than current level.");
+                // add the node itself to the next level nodes
+                next_level_nodes.push(node.clone());
                 let children = node.non_self_descendants.borrow();
-                for child in children.iter() {
-                    // to do: only test when child.level == i - 1
-                    let distance = node.point.distance(&child.point);
-                    // test the covering property
-                    if distance > f32::exp2(i as f32) {
-                        return Err(format!("Cover tree cover constraint violated: distance between parent {:?} and child {:?} is {}, which exceeds the threshold of {}", node.point, child.point, distance, f32::exp2(i as f32)));
-                    }
-                    if child.level.borrow().clone() == i - 1 {
+                for child in children.iter() {                    
+                    let child_level = child.level.borrow().clone();
+                    if child_level == current_level - 1 {
                         next_level_nodes.push(child.clone());
-                    }else{
-                        assert!(child.level.borrow().clone() < i - 1);
-                    }                    
+                                                
+                        // test the covering property
+                        let distance = node.point.distance(&child.point);
+                        if distance > f32::exp2(current_level as f32) {
+                            return Err(format!("Cover tree cover constraint violated: distance between parent {:?} and child {:?} is {}, which exceeds the threshold of {}", node.point, child.point, distance, f32::exp2(current_level as f32)));
+                        }
+                    }
+                    if child_level <= current_level - 1 {
+                        has_remaining_children = true;
+                    }
                 }
-            }
+            }            
             // test the separation property
+            println!("Level {} has {} nodes", current_level, current_level_nodes.len());
             for (i, node_a) in current_level_nodes.iter().enumerate() {
                 for node_b in current_level_nodes.iter().skip(i + 1) {
                     let distance = node_a.point.distance(&node_b.point);
-                    if distance <= f32::exp2(i as f32) {
+                    println!("distance: {}, threshold: {}", distance, f32::exp2(current_level as f32));
+                    if distance <= f32::exp2(current_level as f32) {
                         return Err(format!("Cover tree separation constraint violated: distance between nodes {:?} and {:?} is {}, which does not exceed the threshold of {}", node_a.point, node_b.point, distance, f32::exp2(i as f32)));
                     }
                 }
-            }        
+            }      
+            if !has_remaining_children{
+                break;
+            }
             // move to the next level
             current_level_nodes = next_level_nodes;
         }
