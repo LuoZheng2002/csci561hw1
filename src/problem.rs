@@ -204,12 +204,15 @@ impl Solution {
         Solution::new(best_order, Rc::downgrade(&problem), id_iter, None)
     }
 
-    pub fn brute_force(problem: Rc<Problem>, id_iter: &mut dyn Iterator<Item = usize>) -> Self {
+    pub fn from_brute_force(
+        problem: &Rc<Problem>,
+        id_iter: &mut dyn Iterator<Item = usize>,
+    ) -> Self {
         let cities = &problem.cities;
         if cities.len() <= 1 {
             return Solution::new(
                 (0..cities.len() as u32).collect(),
-                Rc::downgrade(&problem),
+                Rc::downgrade(problem),
                 id_iter,
                 Some(0.0),
             );
