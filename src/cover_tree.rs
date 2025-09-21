@@ -248,7 +248,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 let node = node.upgrade().unwrap();
                 // push the node itself as a potential candidate at the next level
                 let parent_target_distance = node.point.distance(target);
-                if parent_target_distance < f32::exp2(i as f32) {
+                if parent_target_distance <= f32::exp2(i as f32) {
                     next_cover_set.push(Rc::downgrade(&node));
                 }
                 // push all children of the node as potential candidates at the next level
@@ -257,7 +257,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                     let child_level = child.level.borrow().clone();
                     if child_level == i - 1 {
                         let distance = child.point.distance(target);
-                        if distance < f32::exp2(i as f32) {
+                        if distance <= f32::exp2(i as f32) {
                             next_cover_set.push(Rc::downgrade(child));
                         }
                     }
@@ -346,7 +346,8 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         for child in target_children.iter() {
             let mut valid_parent_and_parent_level: Option<(Rc<CoverTreeNode<T>>, i32)> = None;
             println!("Reparenting child {:?}", child.point);
-            for new_parent_level in lowest_child_level + 1.. {
+            let child_level = child.level.borrow().clone();
+            for new_parent_level in child_level + 1.. {
                 println!("Searching for parent at level {}", new_parent_level);
                 if let Some(potential_parents) = level_to_cover_set.get(&new_parent_level) {
                     // within the distance threshold, the children can be re-parented to the new parent level
