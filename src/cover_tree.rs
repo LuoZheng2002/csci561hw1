@@ -206,42 +206,47 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         let mut level_to_cover_set: BTreeMap<i32, Vec<Weak<CoverTreeNode<T>>>> = BTreeMap::new();
         let root_level = root.level.borrow().clone();
         level_to_cover_set.insert(root_level, vec![Rc::downgrade(&root)]);
-        let target_node: Rc<CoverTreeNode<T>> = 'found_target_node_label: {
-            for i in (-root_level..).map(|x| -x) {
-                let current_cover_set = level_to_cover_set.get(&i).expect("Cannot find the query, reached the bottom of the tree.");
-                assert!(!current_cover_set.is_empty());
-                let mut next_cover_set: Vec<Weak<CoverTreeNode<T>>> = Vec::new();
-                // search for the target node in the children of the current cover set
-                for node in current_cover_set.iter() {
-                    let node = node.upgrade().unwrap();
-                    // push the node itself as a potential candidate at the next level
-                    next_cover_set.push(Rc::downgrade(&node));
-                    // push all children of the node as potential candidates at the next level
-                    let children = node.non_self_descendants.borrow();
-                    for child in children.iter() {
-                        if child.point == *target {
-                            break 'found_target_node_label child.clone();
-                        }
-                        if child.level.borrow().clone() != i - 1 {
-                            assert!(child.level.borrow().clone() < i - 1);
-                            continue;
-                        }
-                        let distance = child.point.distance(target);
-                        if distance < f32::exp2(i as f32) {
-                            next_cover_set.push(Rc::downgrade(child));
-                        }
+        let mut target_node: Option<Rc<CoverTreeNode<T>>> = None;
+        for i in (-root_level..).map(|x| -x) {
+            let current_cover_set = level_to_cover_set.get(&i).expect("Cannot find the query, reached the bottom of the tree.");
+            assert!(!current_cover_set.is_empty());
+            let mut next_cover_set: Vec<Weak<CoverTreeNode<T>>> = Vec::new();
+            // search for the target node in the children of the current cover set
+            // even if we found the target node, we still need to populate the next cover set for re-parenting the target's children
+            for node in current_cover_set.iter() {
+                let node = node.upgrade().unwrap();
+                // push the node itself as a potential candidate at the next level
+                next_cover_set.push(Rc::downgrade(&node));
+                // push all children of the node as potential candidates at the next level
+                let children = node.non_self_descendants.borrow();
+                for child in children.iter() {
+                    if child.point == *target {
+                        assert!(target_node.is_none(), "Found multiple nodes with the target point, which should not happen in a valid cover tree.");
+                        target_node = Some(child.clone());
+                    }
+                    if child.level.borrow().clone() != i - 1 {
+                        assert!(child.level.borrow().clone() < i - 1);
+                        continue;
+                    }
+                    let distance = child.point.distance(target);
+                    if distance < f32::exp2(i as f32) {
+                        next_cover_set.push(Rc::downgrade(child));
                     }
                 }
-                level_to_cover_set.insert(i - 1, next_cover_set);
+            }            
+            level_to_cover_set.insert(i - 1, next_cover_set);
+            if target_node.is_some() {
+                break;
             }
-            panic!("Target point not found in the cover tree.");
-        };
+        }
+        let target_node = target_node.expect("Cannot find the target point in the cover tree.");
         // take the children out of the target node
-        let target_children = std::mem::take(&mut *target_node.non_self_descendants.borrow_mut());
+        let mut target_children = std::mem::take(&mut *target_node.non_self_descendants.borrow_mut());
         // unbind the target's children from the target node
         for child in target_children.iter() {
             *child.ancestor.borrow_mut() = Weak::new();
         }
+        // process the target's parent node if there is one
         if let Some(parent_node) = target_node.ancestor.borrow().upgrade(){
             // remove the target node from its parent's children list
             // this will also invalidate target in the cover set at level current_level - 1
@@ -253,61 +258,65 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         } else {
             // the target node has no parent, it must be the root node
             assert!(Rc::ptr_eq(&root, &target_node));
-        };       
-        
-        // the children may need to be promoted different number of levels,
-        // and may not be assigned parents at the same level
-        let mut remaining_children: Vec<_> = target_children.iter().cloned().collect();
+            let first_target_child = target_children.pop();
+            let Some(first_target_child) = first_target_child else {
+                // the target node has no children, the tree is now empty
+                self.root = None;
+                return;
+            };
+            // promote one of the target's children to be the new root node
+            assert!(first_target_child.ancestor.borrow().upgrade().is_none()); // its parent was removed in the last step
+            self.root = Some(first_target_child.clone());
+        };
+        let target_level = target_node.level.borrow().clone();
+
+        // let mut remaining_children = target_children;
+
         // search for the new parent level for each of the target's children
         // until all children have been re-parented to a new parent level, or there are no more levels to search for parents
-        for new_parent_level in target_level.. {
-            let root = self.root.clone().unwrap();
-            // in very rare cases, like the children of the target are at the very edge of the point set, 
-            // the new parent level may be greater than the current root level, in which case we need to stack a new root node on top of the current root node
-            if new_parent_level > root.level.borrow().clone() {
-                assert!(new_parent_level == root.level.borrow().clone() + 1);
-                // stack a new root node on top of the current root node, so that the children may be re-parented to the new root node
-                let new_root = CoverTreeNode::new(root.point.clone(), new_parent_level, Weak::new());
-                *root.ancestor.borrow_mut() = Rc::downgrade(&new_root);
-                // new root's children is itself with one fewer level
-                new_root.non_self_descendants.borrow_mut().insert_self(root.clone());
-                self.root = Some(new_root);
-            }
-            // within the distance threshold, the children can be re-parented to the new parent level
-            // this is because it satisfies the cover constraint
-            let distance_threshold = f32::exp2(new_parent_level as f32);
-            let mut new_remaining_children: Vec<Rc<CoverTreeNode<T>>> = Vec::new();
-            let potential_parents = level_to_cover_set.get(&new_parent_level).unwrap();
-            for child in remaining_children.iter(){
-                let mut found_new_parent = false;
-                for potential_parent in potential_parents.iter(){
-                    // parents may be invalidated because we just removed the target node from the tree
-                    let Some(potential_parent) = potential_parent.upgrade() else {
-                        continue;
-                    };
-                    let distance = potential_parent.point.distance(&child.point);
-                    if distance <= distance_threshold {
-                        // place the child under the potential parent
-                        *child.ancestor.borrow_mut() = Rc::downgrade(&potential_parent);
-                        // assert level
-                        assert!(potential_parent.level.borrow().clone() == child.level.borrow().clone() + 1);
-                        potential_parent.non_self_descendants.borrow_mut().insert_new_node(&potential_parent,child.clone());
-                        found_new_parent = true;
-                        break;
+        for child in target_children.iter(){
+            let mut valid_parent: Option<Rc<CoverTreeNode<T>>> = None;
+            for new_parent_level in target_level.. {
+                if let Some(potential_parents) = level_to_cover_set.get(&new_parent_level) {
+                    // within the distance threshold, the children can be re-parented to the new parent level
+                    // this is because it satisfies the cover constraint
+                    let distance_threshold = f32::exp2(new_parent_level as f32);            
+                    for potential_parent in potential_parents.iter(){
+                        // parents may be invalidated because we just removed the target node from the tree
+                        let Some(potential_parent) = potential_parent.upgrade() else {
+                            continue;
+                        };
+                        let distance = potential_parent.point.distance(&child.point);
+                        if distance <= distance_threshold {
+                            valid_parent = Some(potential_parent);
+                            break;                                                
+                        }
                     }
-                }
-                if !found_new_parent {
-                    // construct a linking node between the current child node and the greater parent level
-                    let linking_node = CoverTreeNode::new(child.point.clone(), new_parent_level, Weak::new());
-                    *child.ancestor.borrow_mut() = Rc::downgrade(&linking_node);
-                    linking_node.non_self_descendants.borrow_mut().insert_self(child.clone());
-                    new_remaining_children.push(linking_node);
+                }                   
+                // if we did not find a valid parent, use root as fallback
+                valid_parent = valid_parent.or_else(|| {
+                    let root = self.root.clone().expect("Cover tree must have a root node at this point.");
+                    {
+                        let mut root_level = root.level.borrow_mut();
+                        *root_level = (*root_level).max(new_parent_level);
+                    }
+                    let distance = root.point.distance(&child.point);
+                    if distance <= f32::exp2(new_parent_level as f32) {
+                        Some(root)
+                    } else {
+                        None
+                    }
+                });
+                if valid_parent.is_some(){
+                    break;
                 }
             }
-            if new_remaining_children.is_empty() {
-                break;
-            }
-            remaining_children = new_remaining_children;
+            let valid_parent = valid_parent.expect("Failed to find a valid parent for a child of the removed node.");
+            // place the child under the potential parent
+            *child.ancestor.borrow_mut() = Rc::downgrade(&valid_parent);
+            // assert level
+            assert!(valid_parent.level.borrow().clone() > child.level.borrow().clone());
+            valid_parent.non_self_descendants.borrow_mut().push(child.clone());
         }
     }
     pub fn print(&self) {
