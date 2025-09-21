@@ -31,7 +31,7 @@ impl GeneticAlgorithm{
         end_index: usize,
         id_iter: &mut dyn Iterator<Item = usize>,
     ) -> Solution {
-        let mut parent2_replaced_elements: BTreeSet<usize> = parent2.order[start_index..end_index]
+        let mut parent2_replaced_elements: BTreeSet<u32> = parent2.order[start_index..end_index]
             .iter()
             .cloned()
             .collect();
@@ -43,18 +43,18 @@ impl GeneticAlgorithm{
         let mut visited = vec![false; parent1.order.len()];
         let mut dirty_indices = Vec::new();
         for i in 0..parent1.order.len(){
-            if visited[child_order[i]] {
+            if visited[child_order[i] as usize] {
                 dirty_indices.push(i);
             } else {
-                visited[child_order[i]] = true;
+                visited[child_order[i] as usize] = true;
             }
         }
         assert!(parent2_replaced_elements.len() == dirty_indices.len());
         for (dirty_index, replacement) in dirty_indices.into_iter().zip(parent2_replaced_elements.into_iter()) {
             child_order[dirty_index] = replacement;
         }
-        let child = Solution::new(child_order, Rc::downgrade(&parent1.problem.upgrade().unwrap()), id_iter);
-        assert!(child.is_valid(parent1.order.len()));
+        let child = Solution::new(child_order, Rc::downgrade(&parent1.problem.upgrade().unwrap()), id_iter, None);
+        assert!(child.is_valid(parent1.order.len() as u32));
         child
     }
     pub fn solve(&self) -> Rc<Solution> {

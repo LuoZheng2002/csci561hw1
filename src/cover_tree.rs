@@ -39,15 +39,17 @@ where
 
 pub struct CoverTreeNode<T: Ord + Clone + Distance + std::fmt::Debug> {
     point: T,
+    index: u32,
     level: RefCell<i32>,
     ancestor: RefCell<Weak<CoverTreeNode<T>>>,
     non_self_descendants: RefCell<Vec<Rc<CoverTreeNode<T>>>>,
 }
 
 impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTreeNode<T> {
-    fn new(point: T, level: i32, parent: Weak<CoverTreeNode<T>>) -> Rc<Self> {
+    fn new(point: T, index: u32, level: i32, parent: Weak<CoverTreeNode<T>>) -> Rc<Self> {
         Rc::new(CoverTreeNode {
             point,
+            index,
             level: RefCell::new(level),
             ancestor: RefCell::new(parent),
             non_self_descendants: RefCell::new(Vec::new()),
@@ -64,10 +66,10 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         Self { root: None }
     }
 
-    pub fn insert(&mut self, p: T) {
+    pub fn insert(&mut self, p: T, index: u32) {
         // if there is no root node, create a new root node with the point p and level 0
         let Some(root) = self.root.as_ref() else {
-            self.root = Some(CoverTreeNode::new(p, 0, Weak::new()));
+            self.root = Some(CoverTreeNode::new(p, index, 0, Weak::new()));
             return;
         };
         // hoist the root to accommodate a faraway new node if necessary
@@ -128,7 +130,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 // the distance is suitable for the cover constraint
                 if distance <= f32::exp2(*level as f32) {
                     // parent.clone().insert_new_point(p.clone());
-                    let new_node = CoverTreeNode::new(p.clone(), level - 1, Rc::downgrade(parent));
+                    let new_node = CoverTreeNode::new(p.clone(), index, level - 1, Rc::downgrade(parent));
                     parent.non_self_descendants.borrow_mut().push(new_node);
                     return;
                 }
@@ -137,7 +139,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         panic!("Failed to insert point into cover tree, no valid parent found.");
     }
 
-    pub fn nearest_neighbor(&self, query: &T) -> Option<(T, f32)> {
+    pub fn nearest_neighbor(&self, query: &T) -> Option<(T, u32, f32)> {
         // retrieve the root node, if there is no root node, return None
         let Some(root) = self.root.as_ref() else {
             return None;
@@ -183,7 +185,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             current_cover_set = next_cover_set;
         }
         // Some(best_candidate.expect("Reached the bottom of the cover tree but no candidate found, which should not happen."))
-        Some((best_candidate.point.clone(), best_distance))
+        Some((best_candidate.point.clone(), best_candidate.index, best_distance))
     }
 
     pub fn remove(&mut self, target: &T) {
@@ -223,10 +225,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                                     child.level.borrow().clone()
                                 })
                                 .min()
-                                .unwrap_or_else(|| {
-                                    println!("Target node has no children.");
-                                    node.level.borrow().clone()
-                                })
+                                .unwrap_or_else(|| node.level.borrow().clone())
                         };
                         Some((node, lowest_child))
                     } else {
@@ -402,6 +401,9 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 .borrow_mut()
                 .push(child.clone());
         }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
     }
     pub fn print(&self) {
         let Some(root) = self.root.as_ref() else {

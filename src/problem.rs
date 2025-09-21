@@ -4,6 +4,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use itertools::Itertools;
 use ordered_float::NotNan;
 use rand::{
     Rng,
@@ -23,9 +24,6 @@ pub struct City {
 impl City {
     pub fn dist2(&self, other: &Self) -> f32 {
         (self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2)
-    }
-    pub fn distance(&self, other: &Self) -> f32 {
-        self.dist2(other).sqrt()
     }
 }
 
@@ -55,49 +53,50 @@ pub struct Problem {
 
 #[derive(Clone)]
 pub struct Solution {
-    pub order: Vec<usize>,
+    pub order: Vec<u32>,
     pub problem: Weak<Problem>,
-    total_length: RefCell<Option<f32>>,
+    total_distance: RefCell<Option<f32>>,
     pub id: usize,
 }
 
 impl Solution {
     pub fn new(
-        order: Vec<usize>,
+        order: Vec<u32>,
         problem: Weak<Problem>,
         id_iter: &mut dyn Iterator<Item = usize>,
+        total_distance: Option<f32>,
     ) -> Self {
         Self {
             order,
             problem,
-            total_length: RefCell::new(None),
+            total_distance: RefCell::new(total_distance),
             id: id_iter.next().unwrap(),
         }
     }
-    pub fn is_valid(&self, num_cities: usize) -> bool {
-        if self.order.len() != num_cities {
+    pub fn is_valid(&self, num_cities: u32) -> bool {
+        if self.order.len() != num_cities as usize {
             return false;
         }
         // check for duplicates
-        let mut seen = vec![false; num_cities];
+        let mut seen = vec![false; num_cities as usize];
         for &city in &self.order {
-            if city >= num_cities || seen[city] {
+            if city >= num_cities || seen[city as usize] {
                 return false;
             }
-            seen[city] = true;
+            seen[city as usize] = true;
         }
         true
     }
-    pub fn total_length(&self) -> f32 {
-        let mut total_length = self.total_length.borrow_mut();
+    pub fn total_distance(&self) -> f32 {
+        let mut total_length = self.total_distance.borrow_mut();
         if let Some(length) = total_length.as_ref() {
             return *length;
         }
         let mut new_total_length = 0.0;
         let problem = self.problem.upgrade().expect("Problem has been dropped");
         for i in 0..self.order.len() {
-            let city_a = &problem.cities[self.order[i]];
-            let city_b = &problem.cities[self.order[(i + 1) % self.order.len()]];
+            let city_a = &problem.cities[self.order[i] as usize];
+            let city_b = &problem.cities[self.order[(i + 1) % self.order.len()] as usize];
             let dist = ((city_a.x - city_b.x).powi(2)
                 + (city_a.y - city_b.y).powi(2)
                 + (city_a.z - city_b.z).powi(2))
@@ -120,13 +119,136 @@ impl Solution {
         id_iter: &mut dyn Iterator<Item = usize>,
     ) -> Self {
         let num_cities = problem.cities.len();
-        let mut order: Vec<usize> = (0..num_cities).collect();
+        let mut order: Vec<u32> = (0..num_cities as u32).collect();
         order.shuffle(rng);
-        Self::new(order, Rc::downgrade(problem), id_iter)
+        Self::new(order, Rc::downgrade(problem), id_iter, None)
     }
 
-    pub fn from_nearest_neighbor(problem: &Rc<Problem>) {
-        // let cover_tree = CoverTree::new()
+    pub fn from_nearest_neighbor(
+        problem: &Rc<Problem>,
+        id_iter: &mut dyn Iterator<Item = usize>,
+    ) -> Self {
+        let mut cover_tree = CoverTree::new();
+        for (i, city) in problem.cities.iter().enumerate().skip(1) {
+            cover_tree.insert(*city, i as u32);
+        }
+        let initial_city = problem.cities[0];
+        let mut current_city = initial_city;
+        let mut total_distance = 0.0;
+        let mut ordered_cities = vec![0];
+        for _ in 0..problem.cities.len() - 1 {
+            let (nearest_city, index, distance) =
+                cover_tree.nearest_neighbor(&current_city).unwrap();
+            // println!("Current city: {:?}, Nearest city: {:?}, Dist: {}", current_city, nearest_city, dist);
+            // current_city = nearest_city;
+            total_distance += distance;
+            cover_tree.remove(&nearest_city);
+            ordered_cities.push(index);
+            current_city = nearest_city;
+        }
+        assert!(cover_tree.is_empty());
+        ordered_cities.push(0);
+        total_distance += current_city.distance(&initial_city);
+        Self::new(
+            ordered_cities,
+            Rc::downgrade(problem),
+            id_iter,
+            Some(total_distance),
+        )
+    }
+    pub fn targeted_two_opt(&self, id_iter: &mut dyn Iterator<Item = usize>) -> Self {
+        let problem = self.problem.upgrade().expect("Problem has been dropped");
+        let mut best_order = self.order.clone();
+        // let mut best_distance = self.total_distance();
+
+        let n = best_order.len();
+        if n < 4 {
+            panic!("Solution too short for 2-opt optimization");
+        }
+
+        let cities = &problem.cities;
+
+        // let dist = |a: u32, b: u32| cities[a as usize].distance(&cities[b as usize]);
+        loop {
+            let mut found_shorter = false;
+            let start = best_order[0];
+            let end = best_order[n - 1];
+            for i in 1..n - 2 {
+                let a = best_order[i];
+                let b = best_order[i + 1];
+                let city_a = &cities[a as usize];
+                let city_b = &cities[b as usize];
+                let city_start = &cities[start as usize];
+                let city_end = &cities[end as usize];
+                let current_cost = city_a.distance(city_b) + city_end.distance(city_start);
+                let new_cost = city_a.distance(city_end) + city_b.distance(city_start);
+                if new_cost < current_cost {
+                    best_order[0..=i].reverse();
+                    let new_solution = Solution::new(
+                        best_order.clone(),
+                        Rc::downgrade(&problem),
+                        &mut (0..),
+                        None,
+                    );
+                    let new_distance = new_solution.total_distance();
+                    assert!(self.total_distance() - current_cost == new_distance - new_cost);
+                    found_shorter = true;
+                    println!("found shorter");
+                    break;
+                } else {
+                    println!("not shorter");
+                }
+            }
+            if !found_shorter {
+                println!("did not find shorter");
+                break;
+            }
+        }
+        Solution::new(best_order, Rc::downgrade(&problem), id_iter, None)
+    }
+
+    pub fn brute_force(problem: Rc<Problem>, id_iter: &mut dyn Iterator<Item = usize>) -> Self {
+        let cities = &problem.cities;
+        if cities.len() <= 1 {
+            return Solution::new(
+                (0..cities.len() as u32).collect(),
+                Rc::downgrade(&problem),
+                id_iter,
+                Some(0.0),
+            );
+        }
+        // let start = cities[0];
+        // let others: Vec<u32> = cities[1..].to_vec();
+        let start_index = 0;
+        let other_indices = (1..cities.len() as u32).collect::<Vec<_>>();
+
+        let mut best_order = Vec::new();
+        let mut best_distance = f32::INFINITY;
+
+        for perm in other_indices
+            .iter()
+            .permutations(other_indices.len())
+            .unique()
+        {
+            let mut candidate = vec![start_index];
+            candidate.extend(perm.into_iter().copied());
+            let mut total_distance = 0.0;
+            for i in 0..candidate.len() {
+                let city_a = &cities[candidate[i] as usize];
+                let city_b = &cities[candidate[(i + 1) % candidate.len()] as usize];
+                total_distance += city_a.distance(city_b);
+            }
+            if total_distance < best_distance {
+                best_distance = total_distance;
+                best_order = candidate;
+            }
+        }
+        Solution::new(
+            best_order,
+            Rc::downgrade(&problem),
+            id_iter,
+            Some(best_distance),
+        )
     }
 }
 
@@ -150,7 +272,7 @@ impl Population {
         let mut min_length = f32::MAX;
         let mut max_length = f32::MIN;
         for solution in &self.solutions {
-            let length = solution.total_length();
+            let length = solution.total_distance();
             if length < min_length {
                 min_length = length;
             }
@@ -193,7 +315,7 @@ impl Population {
             .solutions
             .iter()
             .map(|solution| {
-                let length = solution.total_length();
+                let length = solution.total_distance();
                 Self::calculate_fitness(length, min_length, max_length)
             })
             .collect::<Vec<_>>();
@@ -213,7 +335,7 @@ impl Population {
                 println!(
                     "From random shuffle: id: {}, total_length: {}",
                     solution.id,
-                    solution.total_length()
+                    solution.total_distance()
                 );
                 Rc::new(solution)
             })
@@ -230,8 +352,8 @@ impl Population {
         self.solutions
             .iter()
             .min_by(|a, b| {
-                a.total_length()
-                    .partial_cmp(&b.total_length())
+                a.total_distance()
+                    .partial_cmp(&b.total_distance())
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .expect("Population has no solutions")

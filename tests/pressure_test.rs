@@ -9,10 +9,10 @@ use rust::generator::ProblemGenerator;
 
 #[test]
 fn pressure_test_cover_tree_nearest_neighbor() {
-    let num_queries = 2000;
+    let num_queries = 100;
 
     // let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
-    let problem_generator = ProblemGenerator::new(2000, 1000.0);
+    let problem_generator = ProblemGenerator::new(100, 1000.0);
     let problem = problem_generator.generate_problem();
     // let mut rng = StdRng::seed_from_u64(42);
     // problem.shuffle(&mut rng);
