@@ -74,7 +74,11 @@ impl std::fmt::Debug for Point2D {
 
         let to_remove = Point2D { x: 5, y: 5 };
         tree.remove(&to_remove);
-        tree.assert_valid_cover_tree();
+        if let Err(e) = tree.assert_valid_cover_tree() {
+            println!("Cover tree validation failed after removal: {}", e);
+            tree.print();
+            panic!();
+        }
 
         let query = Point2D { x: 5, y: 5 };
         let result = tree.nearest_neighbor(&query);
@@ -100,7 +104,11 @@ impl std::fmt::Debug for Point2D {
         tree.insert(p2.clone());
 
         tree.remove(&p2);
-        tree.assert_valid_cover_tree();
+        if let Err(e) = tree.assert_valid_cover_tree() {
+            println!("Cover tree validation failed after removing root child: {}", e);
+            tree.print();
+            panic!();
+        }
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap};
 use std::rc::{Rc, Weak};
+use std::vec;
 
 pub trait Distance{
     fn distance(&self, other: &Self) -> f32;
@@ -53,9 +54,6 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTreeNode<T> {
             ancestor: RefCell::new(parent),
             non_self_descendants: RefCell::new(Vec::new()),
         })
-    }
-    fn is_leaf(&self) -> bool {
-        self.non_self_descendants.borrow().is_empty()
     }
 }
 
@@ -356,41 +354,41 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         let Some(root) = self.root.as_ref() else {
             return Ok(());
         };
-        let mut current_level = root.level.borrow().clone();
-        let mut current_level_nodes = Vec::new();
-        current_level_nodes.push(root.clone());
-        let mut current_level_value_set: BTreeSet<_> = current_level_nodes.iter().map(|node| node.point.clone()).collect();
-        while !current_level_nodes.is_empty() {
+        let root_level = root.level.borrow().clone();
+        let mut current_level_nodes = vec![root.clone()];
+        for i in (-root_level..).map(|x| -x) {
+            if current_level_nodes.is_empty(){
+                break;
+            }
             let mut next_level_nodes = Vec::new();
             for node in current_level_nodes.iter() {
-                for child in node.non_self_descendants.borrow().iter() {
+                assert!(node.level.borrow().clone() >= i, "Node level is less than current level.");
+                let children = node.non_self_descendants.borrow();
+                for child in children.iter() {
+                    // to do: only test when child.level == i - 1
                     let distance = node.point.distance(&child.point);
                     // test the covering property
-                    if distance > f32::exp2(current_level as f32) {
-                        return Err(format!("Cover tree cover constraint violated: distance between parent {:?} and child {:?} is {}, which exceeds the threshold of {}", node.point, child.point, distance, f32::exp2(current_level as f32)));
+                    if distance > f32::exp2(i as f32) {
+                        return Err(format!("Cover tree cover constraint violated: distance between parent {:?} and child {:?} is {}, which exceeds the threshold of {}", node.point, child.point, distance, f32::exp2(i as f32)));
                     }
-                    next_level_nodes.push(child.clone());
+                    if child.level.borrow().clone() == i - 1 {
+                        next_level_nodes.push(child.clone());
+                    }else{
+                        assert!(child.level.borrow().clone() < i - 1);
+                    }                    
                 }
             }
             // test the separation property
             for (i, node_a) in current_level_nodes.iter().enumerate() {
                 for node_b in current_level_nodes.iter().skip(i + 1) {
                     let distance = node_a.point.distance(&node_b.point);
-                    if distance <= f32::exp2(current_level as f32) {
-                        return Err(format!("Cover tree separation constraint violated: distance between nodes {:?} and {:?} is {}, which does not exceed the threshold of {}", node_a.point, node_b.point, distance, f32::exp2(current_level as f32)));
+                    if distance <= f32::exp2(i as f32) {
+                        return Err(format!("Cover tree separation constraint violated: distance between nodes {:?} and {:?} is {}, which does not exceed the threshold of {}", node_a.point, node_b.point, distance, f32::exp2(i as f32)));
                     }
                 }
-            }
-            let next_level_value_set = next_level_nodes.iter().map(|node| node.point.clone()).collect::<BTreeSet<_>>();
-            // test the nesting property
-            // assert!(next_level_value_set.is_superset(&current_level_value_set));
-            if !next_level_value_set.is_empty() && !next_level_value_set.is_superset(&current_level_value_set){
-                return Err(format!("Nesting property violated at level {}. Next level value set: {:?}, Current level value set: {:?}", current_level, next_level_value_set, current_level_value_set));
-            }           
+            }        
             // move to the next level
             current_level_nodes = next_level_nodes;
-            current_level_value_set = next_level_value_set;
-            current_level -= 1;
         }
         Ok(())
     }
