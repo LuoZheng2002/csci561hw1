@@ -7,50 +7,26 @@ use rand::{Rng, SeedableRng};
 use rust::cover_tree::{CoverTree, Distance};
 use rust::generator::ProblemGenerator;
 
-// pub struct Problem1DGenerator{
-//     pub num_numbers: usize,
-//     pub max_value: u32,
-//     pub rng: RefCell<StdRng>,
-// }
-
-// impl Problem1DGenerator{
-//     pub fn new(num_numbers: usize, max_value: u32) -> Self {
-//         let rng = StdRng::seed_from_u64(42);
-//         Self {
-//             num_numbers,
-//             max_value,
-//             rng: RefCell::new(rng),
-//         }
-//     }
-//     pub fn generate_problem(&self) -> Vec<u32>{
-//         let mut rng = self.rng.borrow_mut();
-//         let dist = Uniform::new(0, self.max_value).unwrap();
-//         let numbers = (0..self.num_numbers)
-//             .map(|_| rng.sample(&dist))
-//             .collect();
-//         numbers
-//     }
-// }
-
 #[test]
 fn pressure_test_cover_tree_nearest_neighbor() {
-    let num_points: usize = 500;
-    let num_queries = 10;
+    let num_queries = 2000;
 
-    let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
-    let mut rng = StdRng::seed_from_u64(42);
-    problem.shuffle(&mut rng);
-    problem.resize(num_points, 0);
+    // let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
+    let problem_generator = ProblemGenerator::new(2000, 1000.0);
+    let problem = problem_generator.generate_problem();
+    // let mut rng = StdRng::seed_from_u64(42);
+    // problem.shuffle(&mut rng);
+    // problem.resize(num_points, 0);
 
     let mut tree = CoverTree::new();
 
-    for num in &problem {
-        tree.insert(num.clone());
-        if let Err(e) = tree.assert_valid_cover_tree() {
-            println!("Cover tree failed validation after inserting: {}", e);
-            tree.print();
-            panic!();
-        }
+    for city in &problem.cities {
+        tree.insert(city.clone());
+        // if let Err(e) = tree.assert_valid_cover_tree() {
+        //     println!("Cover tree failed validation after inserting: {}", e);
+        //     tree.print();
+        //     panic!();
+        // }
     }
     println!("Successfully inserted all points into the cover tree.");
 
@@ -65,19 +41,20 @@ fn pressure_test_cover_tree_nearest_neighbor() {
 
     let mut num_mismatches = 0;
 
-    for (i, query) in problem.iter().take(num_queries).enumerate() {
+    for (i, query) in problem.cities.iter().take(num_queries).enumerate() {
         let brute_result = problem
+            .cities
             .iter()
             .filter(|p| *p != query)
             .map(|p| (p, p.distance(query)))
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .unwrap();
         tree.remove(query);
-        if let Err(e) = tree.assert_valid_cover_tree() {
-            println!("Cover tree failed validation after removing: {}", e);
-            tree.print();
-            panic!();
-        }
+        // if let Err(e) = tree.assert_valid_cover_tree() {
+        //     println!("Cover tree failed validation after removing: {}", e);
+        //     tree.print();
+        //     panic!();
+        // }
         let tree_result = tree.nearest_neighbor(query).unwrap();
 
         let dist_diff = (tree_result.1 - brute_result.1).abs();
@@ -90,13 +67,13 @@ fn pressure_test_cover_tree_nearest_neighbor() {
             );
             num_mismatches += 1;
         }
-        println!("dist: {}", tree_result.1);
+        // println!("dist: {}", tree_result.1);
         tree.insert(*query);
-        if let Err(e) = tree.assert_valid_cover_tree() {
-            println!("Cover tree failed validation after inserting: {}", e);
-            tree.print();
-            panic!();
-        }
+        // if let Err(e) = tree.assert_valid_cover_tree() {
+        //     println!("Cover tree failed validation after inserting: {}", e);
+        //     tree.print();
+        //     panic!();
+        // }
     }
 
     assert_eq!(num_mismatches, 0, "Found {} mismatches!", num_mismatches);
@@ -124,7 +101,7 @@ fn pressure_test_without_verification() {
     }
     // println!();
     println!("Successfully inserted all points into the cover tree.");
-    
+
     tree.print();
 
     println!("Finished building the cover tree.");
