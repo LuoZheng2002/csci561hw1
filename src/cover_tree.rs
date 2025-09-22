@@ -1,7 +1,11 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BinaryHeap};
 use std::rc::{Rc, Weak};
 use std::vec;
+
+use ordered_float::NotNan;
+
+use crate::problem::RcKey;
 
 pub trait Distance {
     fn distance(&self, other: &Self) -> f32;
@@ -130,7 +134,8 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 // the distance is suitable for the cover constraint
                 if distance <= f32::exp2(*level as f32) {
                     // parent.clone().insert_new_point(p.clone());
-                    let new_node = CoverTreeNode::new(p.clone(), index, level - 1, Rc::downgrade(parent));
+                    let new_node =
+                        CoverTreeNode::new(p.clone(), index, level - 1, Rc::downgrade(parent));
                     parent.non_self_descendants.borrow_mut().push(new_node);
                     return;
                 }
@@ -139,15 +144,23 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         panic!("Failed to insert point into cover tree, no valid parent found.");
     }
 
-    pub fn nearest_neighbor(&self, query: &T) -> Option<(T, u32, f32)> {
+    pub fn nearest_neighbor(&self, query: &T, nth: usize) -> Option<(T, u32, f32)> {
+        assert!(nth > 0);
         // retrieve the root node, if there is no root node, return None
         let Some(root) = self.root.as_ref() else {
             return None;
         };
-        let mut best_candidate = root.clone();
+        let mut best_distance = root.point.distance(query);
+        let mut best_candidates: BinaryHeap<(NotNan<f32>, RcKey<CoverTreeNode<T>>)> =
+            BinaryHeap::new();
+        best_candidates.push((
+            NotNan::new(best_distance).unwrap(),
+            RcKey::new(root.clone()),
+        ));
+        // let mut best_candidate = root.clone();
         let root_level = root.level.borrow().clone();
         let mut current_cover_set = vec![root.clone()];
-        let mut best_distance = best_candidate.point.distance(query); // the minimum distance from the last level (current_level + 1) 's cover set to the query point
+        // let mut best_distance = best_candidate.point.distance(query); // the minimum distance from the last level (current_level + 1) 's cover set to the query point
 
         for i in (-root_level..).map(|x| -x) {
             if i == -1000 {
@@ -165,8 +178,14 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                         let distance = child.point.distance(query);
                         if distance < best_distance {
                             best_distance = distance;
-                            best_candidate = child.clone();
+                            // best_candidate = child.clone();
                         }
+                        best_candidates
+                            .push((NotNan::new(distance).unwrap(), RcKey::new(child.clone())));
+                        if best_candidates.len() > nth {
+                            best_candidates.pop();
+                        }
+
                         next_cover_set.push(child.clone());
                     }
                     if child_level <= i - 1 {
@@ -185,7 +204,25 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             current_cover_set = next_cover_set;
         }
         // Some(best_candidate.expect("Reached the bottom of the cover tree but no candidate found, which should not happen."))
-        Some((best_candidate.point.clone(), best_candidate.index, best_distance))
+        if nth <= best_candidates.len() {
+            for _ in 0..best_candidates.len() - nth {
+                best_candidates.pop();
+            }
+            let (best_distance, best_candidate) = best_candidates.pop().unwrap();
+            Some((
+                best_candidate.rc().point.clone(),
+                best_candidate.rc().index,
+                best_distance.into_inner(),
+            ))
+        } else {
+            let (best_distance, best_candidate) = best_candidates.pop().unwrap();
+            Some((
+                best_candidate.rc().point.clone(),
+                best_candidate.rc().index,
+                best_distance.into_inner(),
+            ))
+        }
+        // Some((best_candidate.point.clone(), best_candidate.index, best_distance))
     }
 
     pub fn remove(&mut self, target: &T) {

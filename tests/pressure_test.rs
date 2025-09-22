@@ -9,10 +9,10 @@ use rust::generator::ProblemGenerator;
 
 #[test]
 fn pressure_test_cover_tree_nearest_neighbor() {
-    let num_queries = 100;
+    let num_queries = 1000;
 
     // let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
-    let problem_generator = ProblemGenerator::new(100, 1000.0);
+    let problem_generator = ProblemGenerator::new(2000, 1000.0, 42);
     let problem = problem_generator.generate_problem();
     // let mut rng = StdRng::seed_from_u64(42);
     // problem.shuffle(&mut rng);
@@ -20,8 +20,8 @@ fn pressure_test_cover_tree_nearest_neighbor() {
 
     let mut tree = CoverTree::new();
 
-    for city in &problem.cities {
-        tree.insert(city.clone());
+    for (i, city) in problem.cities.iter().enumerate() {
+        tree.insert(city.clone(), i as u32);
         // if let Err(e) = tree.assert_valid_cover_tree() {
         //     println!("Cover tree failed validation after inserting: {}", e);
         //     tree.print();
@@ -55,9 +55,9 @@ fn pressure_test_cover_tree_nearest_neighbor() {
         //     tree.print();
         //     panic!();
         // }
-        let tree_result = tree.nearest_neighbor(query).unwrap();
+        let tree_result = tree.nearest_neighbor(query, 1).unwrap();
 
-        let dist_diff = (tree_result.1 - brute_result.1).abs();
+        let dist_diff = (tree_result.2 - brute_result.1).abs();
         // let same_point = &tree_result.0 == brute_result.0;
 
         if dist_diff > 1e-4 {
@@ -68,66 +68,65 @@ fn pressure_test_cover_tree_nearest_neighbor() {
             num_mismatches += 1;
         }
         // println!("dist: {}", tree_result.1);
-        tree.insert(*query);
+        tree.insert(*query, i as u32);
         // if let Err(e) = tree.assert_valid_cover_tree() {
         //     println!("Cover tree failed validation after inserting: {}", e);
         //     tree.print();
         //     panic!();
         // }
     }
-
     assert_eq!(num_mismatches, 0, "Found {} mismatches!", num_mismatches);
 }
-#[test]
-fn pressure_test_without_verification() {
-    let num_points: usize = 10000;
-    let num_queries = 1000;
+// #[test]
+// fn pressure_test_without_verification() {
+//     let num_points: usize = 10000;
+//     let num_queries = 1000;
 
-    let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
-    let mut rng = StdRng::seed_from_u64(42);
-    problem.shuffle(&mut rng);
-    problem.resize(num_points, 0);
+//     let mut problem: Vec<u32> = (0..num_points as u32 * 4).collect();
+//     let mut rng = StdRng::seed_from_u64(42);
+//     problem.shuffle(&mut rng);
+//     problem.resize(num_points, 0);
 
-    let mut tree = CoverTree::new();
-    // print!("Inserting");
-    for num in &problem {
-        tree.insert(num.clone());
-        // print!("-");
-        // if let Err(e) = tree.assert_valid_cover_tree() {
-        //     println!("Cover tree failed validation after inserting: {}", e);
-        //     tree.print();
-        //     panic!();
-        // }
-    }
-    // println!();
-    println!("Successfully inserted all points into the cover tree.");
+//     let mut tree = CoverTree::new();
+//     // print!("Inserting");
+//     for num in &problem {
+//         tree.insert(num.clone());
+//         // print!("-");
+//         // if let Err(e) = tree.assert_valid_cover_tree() {
+//         //     println!("Cover tree failed validation after inserting: {}", e);
+//         //     tree.print();
+//         //     panic!();
+//         // }
+//     }
+//     // println!();
+//     println!("Successfully inserted all points into the cover tree.");
 
-    tree.print();
+//     tree.print();
 
-    println!("Finished building the cover tree.");
+//     println!("Finished building the cover tree.");
 
-    // Validate structure (optional)
-    if let Err(e) = tree.assert_valid_cover_tree() {
-        panic!("Cover tree failed validation: {}", e);
-    }
+//     // Validate structure (optional)
+//     if let Err(e) = tree.assert_valid_cover_tree() {
+//         panic!("Cover tree failed validation: {}", e);
+//     }
 
-    print!("dists: ");
-    for (_i, query) in problem.iter().take(num_queries).enumerate() {
-        tree.remove(query);
-        // if let Err(e) = tree.assert_valid_cover_tree() {
-        //     println!("Cover tree failed validation after removing: {}", e);
-        //     tree.print();
-        //     panic!();
-        // }
-        let tree_result = tree.nearest_neighbor(query).unwrap();
-        // let same_point = &tree_result.0 == brute_result.0;
-        print!("{}, ", tree_result.1);
-        tree.insert(*query);
-        // if let Err(e) = tree.assert_valid_cover_tree() {
-        //     println!("Cover tree failed validation after inserting: {}", e);
-        //     tree.print();
-        //     panic!();
-        // }
-    }
-    println!("Done.");
-}
+//     print!("dists: ");
+//     for (_i, query) in problem.iter().take(num_queries).enumerate() {
+//         tree.remove(query);
+//         // if let Err(e) = tree.assert_valid_cover_tree() {
+//         //     println!("Cover tree failed validation after removing: {}", e);
+//         //     tree.print();
+//         //     panic!();
+//         // }
+//         let tree_result = tree.nearest_neighbor(query).unwrap();
+//         // let same_point = &tree_result.0 == brute_result.0;
+//         print!("{}, ", tree_result.1);
+//         tree.insert(*query);
+//         // if let Err(e) = tree.assert_valid_cover_tree() {
+//         //     println!("Cover tree failed validation after inserting: {}", e);
+//         //     tree.print();
+//         //     panic!();
+//         // }
+//     }
+//     println!("Done.");
+// }

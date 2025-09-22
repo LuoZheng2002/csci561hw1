@@ -10,8 +10,8 @@ use rust::{
 };
 
 fn main() {
-    let num_cities: u32 = 12;
-    let problem_generator = ProblemGenerator::new(num_cities as usize, 20000.0, 42);
+    let num_cities: u32 = 50;
+    let problem_generator = ProblemGenerator::new(num_cities as usize, 20000.0, 43);
     let problem = Rc::new(problem_generator.generate_problem());
     let timer = Instant::now();
     let solution = adaptive_solve(problem.clone(), &timer);

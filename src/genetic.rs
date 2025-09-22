@@ -1,6 +1,13 @@
 use core::f32;
-use std::{cell::RefCell, cmp::Ordering, collections::BTreeSet, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    cmp::{Ordering, Reverse},
+    collections::{BTreeSet, BinaryHeap},
+    rc::Rc,
+    time::Instant,
+};
 
+use ordered_float::NotNan;
 use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 
 use crate::problem::{Population, Problem, RcKey, Solution};
@@ -13,11 +20,7 @@ pub struct GeneticAlgorithm {
 }
 
 impl GeneticAlgorithm {
-    pub fn new(
-        problem: Rc<Problem>,
-        population_size: usize,
-        extra_population_size: usize,
-    ) -> Self {
+    pub fn new(problem: Rc<Problem>, population_size: usize, extra_population_size: usize) -> Self {
         let rng = RefCell::new(StdRng::seed_from_u64(42));
         Self {
             problem,
@@ -69,21 +72,61 @@ impl GeneticAlgorithm {
         let mut rng = self.rng.borrow_mut();
         let mut current_best_solution: Option<Rc<Solution>> = None;
         let mut current_best_distance = f32::INFINITY;
-        let mut population: Vec<Rc<Solution>> = Vec::new();
-        for i in 0..self.population_size {
-            if timer.elapsed().as_secs() >= time_limit_secs {
-                return current_best_solution
-                    .as_ref()
-                    .expect("No solution found")
-                    .as_ref()
-                    .clone();
-            }
-            let start_index = if i < self.problem.cities.len() {
-                i
+        // let mut population: Vec<Rc<Solution>> = Vec::new();
+        let mut population: BinaryHeap<Reverse<(NotNan<f32>, RcKey<Solution>)>> = BinaryHeap::new();
+        let num_cities = self.problem.cities.len();
+        let first_proba_threshold = num_cities;
+        let second_proba_threshold = num_cities * 3;
+
+        let mut visited_total_lengths: BTreeSet<NotNan<f32>> = BTreeSet::new();
+
+        let mut nn_start_index: usize = 0;
+        let mut num_nearest_neighbor_calls = 0;
+        let mut execute_nearest_neighbor = |nn_start_index: &mut usize, rng: &mut StdRng| {
+            // let start_index = i % num_cities;
+            let second_nearest_proba = if num_nearest_neighbor_calls < first_proba_threshold {
+                0.0
+            } else if num_nearest_neighbor_calls >= first_proba_threshold
+                && num_nearest_neighbor_calls < second_proba_threshold
+            {
+                0.5 * (num_nearest_neighbor_calls - first_proba_threshold) as f32
+                    / (second_proba_threshold - first_proba_threshold) as f32
             } else {
-                break;
+                0.5
             };
-            let solution = Solution::from_nearest_neighbor(&self.problem, start_index);
+            if num_nearest_neighbor_calls == second_proba_threshold {
+                println!("Second proba threshold reached");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let nth_neighbor = if rng.random_bool(second_nearest_proba as f64) {
+                2
+            } else {
+                1
+            };
+            let solution =
+                Solution::from_nearest_neighbor(&self.problem, *nn_start_index, nth_neighbor);
+            num_nearest_neighbor_calls += 1;
+            *nn_start_index = (*nn_start_index + 1) % num_cities;
+            solution
+        };
+
+        // for i in 0..self.population_size {
+        loop {
+            if timer.elapsed().as_secs() >= (time_limit_secs + 1) / 2 {
+                // return current_best_solution
+                //     .as_ref()
+                //     .expect("No solution found")
+                //     .as_ref()
+                //     .clone();
+                println!("Half time reached, break population initialization");
+                break;
+            }
+            // let start_index = if i < num_cities {
+            //     i
+            // } else {
+            //     break;
+            // };
+            let solution = execute_nearest_neighbor(&mut nn_start_index, &mut rng);
             let solution = Rc::new(solution);
             let total_distance = solution.total_distance();
             if total_distance < current_best_distance {
@@ -91,11 +134,27 @@ impl GeneticAlgorithm {
                 current_best_solution = Some(solution.clone());
                 println!(
                     "New best solution found by nearest neighbor with start index {}: {}",
-                    start_index, total_distance
+                    nn_start_index, total_distance
                 );
             }
-            population.push(solution);
+            // population.push(solution);
+            if visited_total_lengths.insert(NotNan::new(total_distance).unwrap()) {
+                println!(
+                    "found a suboptimal solution from nn with length {}",
+                    total_distance
+                );
+                // only insert if this total distance has not been seen before
+                population.push(Reverse((
+                    NotNan::new(total_distance).unwrap(),
+                    RcKey::new(solution.clone()),
+                )));
+                if population.len() > self.population_size {
+                    population.pop();
+                }
+            }
         }
+        let population: Vec<Rc<Solution>> =
+            population.drain().map(|rev| rev.0.1.rc().clone()).collect();
         let mut population = Population::new(population);
 
         // for _i in 0..self.n_generations {
@@ -108,7 +167,7 @@ impl GeneticAlgorithm {
                     .clone();
             }
             let mut new_solutions = Vec::new();
-            for _ in 0..self.extra_population_size {
+            for _ in 0..self.extra_population_size * 2 / 3 {
                 let parent1 = population.sample_parent(&mut rng);
                 let parent2 = population.sample_parent(&mut rng);
                 let start_index = rng.random_range(0..parent1.order.len());
@@ -120,7 +179,44 @@ impl GeneticAlgorithm {
                     current_best_solution = Some(Rc::new(child.clone()));
                     println!("New best solution found by crossover: {}", child_distance);
                 }
-                new_solutions.push(Rc::new(child));
+                if visited_total_lengths.insert(NotNan::new(child_distance).unwrap()) {
+                    println!(
+                        "found a suboptimal solution from crossover with length {}",
+                        child_distance
+                    );
+                    // only insert if this total distance has not been seen before
+                    // population.push(Rc::new(child.clone()));
+                    new_solutions.push(Rc::new(child.clone()));
+                }
+            }
+            for _ in 0..self.extra_population_size / 3 {
+                if timer.elapsed().as_secs() >= time_limit_secs {
+                    return current_best_solution
+                        .as_ref()
+                        .expect("No solution found")
+                        .as_ref()
+                        .clone();
+                }
+                let solution = execute_nearest_neighbor(&mut nn_start_index, &mut rng);
+                let solution = Rc::new(solution);
+                let total_distance = solution.total_distance();
+                if total_distance < current_best_distance {
+                    current_best_distance = total_distance;
+                    current_best_solution = Some(solution.clone());
+                    println!(
+                        "New best solution found by nearest neighbor with start index {}: {}",
+                        nn_start_index, total_distance
+                    );
+                }
+                // population.push(solution);
+                if visited_total_lengths.insert(NotNan::new(total_distance).unwrap()) {
+                    println!(
+                        "found a suboptimal solution from nn with length {}",
+                        total_distance
+                    );
+                    // only insert if this total distance has not been seen before
+                    new_solutions.push(solution.clone());
+                }
             }
             let mut all_solutions = population.solutions;
             all_solutions.extend(new_solutions);
@@ -129,8 +225,11 @@ impl GeneticAlgorithm {
             let mut new_solutions: BTreeSet<RcKey<Solution>> = BTreeSet::new();
             let mut num_trials = 0;
             while new_solutions.len() < self.population_size {
-                if num_trials > self.population_size * 2 {
-                    println!("Warning: Too many trials to sample new solutions, breaking");
+                if num_trials > self.population_size * 3 / 2 {
+                    println!(
+                        "Warning: Too many trials to sample new solutions. Collected {} unique solutions.",
+                        new_solutions.len()
+                    );
                     break;
                 }
                 num_trials += 1;

@@ -156,7 +156,11 @@ impl Solution {
         Self::new(order, Rc::downgrade(problem), None)
     }
 
-    pub fn from_nearest_neighbor(problem: &Rc<Problem>, start_index: usize) -> Self {
+    pub fn from_nearest_neighbor(
+        problem: &Rc<Problem>,
+        start_index: usize,
+        second_nearest: usize,
+    ) -> Self {
         assert!(start_index < problem.cities.len());
         let mut cover_tree = CoverTree::new();
         let offset = start_index;
@@ -170,8 +174,9 @@ impl Solution {
         }
         cover_tree.remove(&initial_city);
         for _ in 0..problem.cities.len() - 1 {
-            let (nearest_city, index, distance) =
-                cover_tree.nearest_neighbor(&current_city).unwrap();
+            let (nearest_city, index, distance) = cover_tree
+                .nearest_neighbor(&current_city, second_nearest)
+                .unwrap();
             // println!("Current city: {:?}, Nearest city: {:?}, Dist: {}", current_city, nearest_city, dist);
             // current_city = nearest_city;
             total_distance += distance;
