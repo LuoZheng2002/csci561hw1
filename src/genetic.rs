@@ -139,10 +139,10 @@ impl GeneticAlgorithm {
             }
             // population.push(solution);
             if visited_total_lengths.insert(NotNan::new(total_distance).unwrap()) {
-                println!(
-                    "found a suboptimal solution from nn with length {}",
-                    total_distance
-                );
+                // println!(
+                //     "found a suboptimal solution from nn with length {}",
+                //     total_distance
+                // );
                 // only insert if this total distance has not been seen before
                 population.push(Reverse((
                     NotNan::new(total_distance).unwrap(),
@@ -167,7 +167,7 @@ impl GeneticAlgorithm {
                     .clone();
             }
             let mut new_solutions = Vec::new();
-            for _ in 0..self.extra_population_size * 2 / 3 {
+            for _ in 0..self.extra_population_size / 2 {
                 let parent1 = population.sample_parent(&mut rng);
                 let parent2 = population.sample_parent(&mut rng);
                 let start_index = rng.random_range(0..parent1.order.len());
@@ -180,16 +180,16 @@ impl GeneticAlgorithm {
                     println!("New best solution found by crossover: {}", child_distance);
                 }
                 if visited_total_lengths.insert(NotNan::new(child_distance).unwrap()) {
-                    println!(
-                        "found a suboptimal solution from crossover with length {}",
-                        child_distance
-                    );
+                    // println!(
+                    //     "found a suboptimal solution from crossover with length {}",
+                    //     child_distance
+                    // );
                     // only insert if this total distance has not been seen before
                     // population.push(Rc::new(child.clone()));
                     new_solutions.push(Rc::new(child.clone()));
                 }
             }
-            for _ in 0..self.extra_population_size / 3 {
+            for _ in 0..self.extra_population_size / 2 {
                 if timer.elapsed().as_secs() >= time_limit_secs {
                     return current_best_solution
                         .as_ref()
@@ -210,10 +210,10 @@ impl GeneticAlgorithm {
                 }
                 // population.push(solution);
                 if visited_total_lengths.insert(NotNan::new(total_distance).unwrap()) {
-                    println!(
-                        "found a suboptimal solution from nn with length {}",
-                        total_distance
-                    );
+                    // println!(
+                    //     "found a suboptimal solution from nn with length {}",
+                    //     total_distance
+                    // );
                     // only insert if this total distance has not been seen before
                     new_solutions.push(solution.clone());
                 }
