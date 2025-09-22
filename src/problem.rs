@@ -11,6 +11,7 @@ use ordered_float::NotNan;
 use rand::{
     Rng,
     distr::{Distribution, weighted::WeightedIndex},
+    rngs::StdRng,
     seq::SliceRandom,
 };
 
@@ -21,6 +22,11 @@ pub struct City {
     pub x: u32,
     pub y: u32,
     pub z: u32,
+}
+impl City {
+    pub fn new(x: u32, y: u32, z: u32) -> Self {
+        Self { x, y, z }
+    }
 }
 
 #[derive(Clone)]
@@ -333,20 +339,51 @@ impl Population {
         // println!("Fitnesses: {:?}", fitnesses);
         WeightedIndex::new(fitnesses).expect("Failed to create WeightedIndex")
     }
-    pub fn from_random_shuffle(problem: &Rc<Problem>, size: usize, rng: &mut impl Rng) -> Self {
-        let solutions = (0..size)
-            .map(|_| {
-                let solution = Solution::from_random_shuffle(problem, rng);
-                Rc::new(solution)
-            })
-            .collect();
-        Population::new(solutions)
-    }
+    // pub fn from_random_shuffle(problem: &Rc<Problem>, size: usize, rng: &mut impl Rng) -> Self {
+    //     let solutions = (0..size)
+    //         .map(|_| {
+    //             let solution = Solution::from_random_shuffle(problem, rng);
+    //             Rc::new(solution)
+    //         })
+    //         .collect();
+    //     Population::new(solutions)
+    // }
     pub fn sample_parent(&self, rng: &mut impl Rng) -> Rc<Solution> {
         let mut roulette = self.roulette.borrow_mut();
         let roulette = roulette.get_or_insert_with(|| self.calculate_roulette());
         let index = roulette.sample(rng);
         self.solutions[index].clone()
+    }
+    pub fn shrink_population(&mut self, target_size: usize, rng: &mut StdRng) -> Vec<Rc<Solution>> {
+        if self.solutions.len() <= target_size {
+            // No need to shrink
+            return self.solutions.clone();
+        }
+        // reset roulette and min/max lengths
+        self.roulette.borrow_mut().take();
+        self.min_length.borrow_mut().take();
+        self.max_length.borrow_mut().take();
+
+        let half_target_size = target_size / 2;
+        let (first_half, _, _) = self
+            .solutions
+            .select_nth_unstable_by_key(half_target_size, |solution| {
+                NotNan::new(solution.total_distance()).unwrap()
+            });
+        assert!(first_half.len() == half_target_size);
+        let mut shrunk_population = first_half.to_vec();
+        let mut last_half = self.solutions[half_target_size..]
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let target_last_half_size = target_size - half_target_size;
+        for _ in 0..target_last_half_size {
+            let random_index = rng.random_range(0..last_half.len());
+            let solution = last_half.swap_remove(random_index);
+            shrunk_population.push(solution);
+        }
+        assert!(shrunk_population.len() == target_size);
+        shrunk_population
     }
     pub fn best_solution(&self) -> Rc<Solution> {
         self.solutions
