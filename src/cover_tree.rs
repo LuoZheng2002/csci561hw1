@@ -145,20 +145,19 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         panic!("Failed to insert point into cover tree, no valid parent found.");
     }
 
-    pub fn nearest_neighbor(&self, query: &T, nth: usize) -> Option<(T, u32, f32)> {
-        assert!(nth > 0);
+    pub fn nearest_neighbor(&self, query: &T) -> Option<(T, u32, f32)> {
         // retrieve the root node, if there is no root node, return None
         let Some(root) = self.root.as_ref() else {
             return None;
         };
         let mut best_distance = root.point.distance(query);
-        let mut best_candidates: BinaryHeap<(NotNan<f32>, RcKey<CoverTreeNode<T>>)> =
-            BinaryHeap::new();
-        best_candidates.push((
-            NotNan::new(best_distance).unwrap(),
-            RcKey::new(root.clone()),
-        ));
-        // let mut best_candidate = root.clone();
+        // let mut best_candidates: BinaryHeap<(NotNan<f32>, RcKey<CoverTreeNode<T>>)> =
+        //     BinaryHeap::new();
+        // best_candidates.push((
+        //     NotNan::new(best_distance).unwrap(),
+        //     RcKey::new(root.clone()),
+        // ));
+        let mut best_candidate = root.clone();
         let root_level = root.level.borrow().clone();
         let mut current_cover_set = vec![root.clone()];
         // let mut best_distance = best_candidate.point.distance(query); // the minimum distance from the last level (current_level + 1) 's cover set to the query point
@@ -179,12 +178,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                         let distance = child.point.distance(query);
                         if distance < best_distance {
                             best_distance = distance;
-                            // best_candidate = child.clone();
-                        }
-                        best_candidates
-                            .push((NotNan::new(distance).unwrap(), RcKey::new(child.clone())));
-                        if best_candidates.len() > nth {
-                            best_candidates.pop();
+                            best_candidate = child.clone();
                         }
 
                         next_cover_set.push(child.clone());
@@ -205,39 +199,39 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             current_cover_set = next_cover_set;
         }
         // Some(best_candidate.expect("Reached the bottom of the cover tree but no candidate found, which should not happen."))
-        if nth <= best_candidates.len() {
-            // let mut last_distance = f32::INFINITY;
-            // for _ in 0..nth - 1 {
-            //     let (first_best_distance, _first_best_candidate) = best_candidates.pop().unwrap().0;
-            //     last_distance = first_best_distance.into_inner();
-            // }
-            for _ in 0..best_candidates.len() - nth {
-                best_candidates.pop().unwrap();
-            }
-            let (best_distance, best_candidate) = best_candidates.pop().unwrap();
-            // if nth == 2 {
-            //     println!("nth neighbor is 2");
-            //     let (first_best_candidate_distance, _first_best_candidate) =
-            //         best_candidates.pop().unwrap();
-            //     println!(
-            //         "positive distance difference: {}",
-            //         best_distance.into_inner() - first_best_candidate_distance.into_inner()
-            //     );
-            // }
-            Some((
-                best_candidate.rc().point.clone(),
-                best_candidate.rc().index,
-                best_distance.into_inner(),
-            ))
-        } else {
-            let (best_distance, best_candidate) = best_candidates.pop().unwrap();
-            Some((
-                best_candidate.rc().point.clone(),
-                best_candidate.rc().index,
-                best_distance.into_inner(),
-            ))
-        }
-        // Some((best_candidate.point.clone(), best_candidate.index, best_distance))
+        // if nth <= best_candidates.len() {
+        //     // let mut last_distance = f32::INFINITY;
+        //     // for _ in 0..nth - 1 {
+        //     //     let (first_best_distance, _first_best_candidate) = best_candidates.pop().unwrap().0;
+        //     //     last_distance = first_best_distance.into_inner();
+        //     // }
+        //     for _ in 0..best_candidates.len() - nth {
+        //         best_candidates.pop().unwrap();
+        //     }
+        //     let (best_distance, best_candidate) = best_candidates.pop().unwrap();
+        //     // if nth == 2 {
+        //     //     println!("nth neighbor is 2");
+        //     //     let (first_best_candidate_distance, _first_best_candidate) =
+        //     //         best_candidates.pop().unwrap();
+        //     //     println!(
+        //     //         "positive distance difference: {}",
+        //     //         best_distance.into_inner() - first_best_candidate_distance.into_inner()
+        //     //     );
+        //     // }
+        //     Some((
+        //         best_candidate.rc().point.clone(),
+        //         best_candidate.rc().index,
+        //         best_distance.into_inner(),
+        //     ))
+        // } else {
+        //     let (best_distance, best_candidate) = best_candidates.pop().unwrap();
+        //     Some((
+        //         best_candidate.rc().point.clone(),
+        //         best_candidate.rc().index,
+        //         best_distance.into_inner(),
+        //     ))
+        // }
+        Some((best_candidate.point.clone(), best_candidate.index, best_distance))
     }
 
     pub fn remove(&mut self, target: &T) {

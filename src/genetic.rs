@@ -47,18 +47,19 @@ impl GeneticAlgorithm {
         start_index: usize,
         end_index: usize,
     ) -> Solution {
-        let mut parent2_replaced_elements: BTreeSet<u32> = parent2.order[start_index..end_index]
+        let mut parent2_replaced_elements: BTreeSet<u32> = parent2.order_without_loop
+            [start_index..end_index]
             .iter()
             .cloned()
             .collect();
-        let mut child_order = parent2.order.clone();
+        let mut child_order = parent2.order_without_loop.clone();
         for i in start_index..end_index {
-            parent2_replaced_elements.remove(&parent1.order[i]);
-            child_order[i] = parent1.order[i];
+            parent2_replaced_elements.remove(&parent1.order_without_loop[i]);
+            child_order[i] = parent1.order_without_loop[i];
         }
-        let mut visited = vec![false; parent1.order.len()];
+        let mut visited = vec![false; parent1.order_without_loop.len()];
         let mut dirty_indices = Vec::new();
-        for i in 0..parent1.order.len() {
+        for i in 0..parent1.order_without_loop.len() {
             if visited[child_order[i] as usize] {
                 dirty_indices.push(i);
             } else {
@@ -77,7 +78,7 @@ impl GeneticAlgorithm {
             Rc::downgrade(&parent1.problem.upgrade().unwrap()),
             None,
         );
-        assert!(child.is_valid(parent1.order.len() as u32));
+        assert!(child.is_valid(parent1.order_without_loop.len() as u32));
         child
     }
 
@@ -86,10 +87,10 @@ impl GeneticAlgorithm {
         parent2: &Solution,
         callback: &mut dyn FnMut(&Solution) -> bool,
     ) {
-        let parent1_order = &parent1.order;
-        let mut parent2_order_forward: VecDeque<u32> = parent2.order.clone().into();
+        let parent1_order = &parent1.order_without_loop;
+        let mut parent2_order_forward: VecDeque<u32> = parent2.order_without_loop.clone().into();
         let mut parent2_order_reversed: VecDeque<u32> =
-            parent2.order.iter().cloned().rev().collect();
+            parent2.order_without_loop.iter().cloned().rev().collect();
         for _ in 0..parent1_order.len() {
             for parent2_order in [&mut parent2_order_forward, &mut parent2_order_reversed] {
                 let mut next_start_to_explore: Option<u32> = Some(0);
@@ -147,7 +148,10 @@ impl GeneticAlgorithm {
                                             Rc::downgrade(&parent1.problem.upgrade().unwrap()),
                                             None,
                                         );
-                                        assert!(new_child1.is_valid(parent1.order.len() as u32));
+                                        assert!(
+                                            new_child1
+                                                .is_valid(parent1.order_without_loop.len() as u32)
+                                        );
                                         // let child = Self::crossover(parent1, parent2, start_index as usize, end_index);
                                         if !callback(&new_child1) {
                                             return;
@@ -167,7 +171,10 @@ impl GeneticAlgorithm {
                                             return;
                                         }
                                         return;
-                                        assert!(new_child2.is_valid(parent2.order.len() as u32));
+                                        assert!(
+                                            new_child2
+                                                .is_valid(parent2.order_without_loop.len() as u32)
+                                        );
                                         crossover_state =
                                             CrossoverState::FindingDifferentAfterStart {
                                                 start_index: i as u32,
@@ -222,7 +229,7 @@ impl GeneticAlgorithm {
                     .as_ref()
                     .clone();
             }
-            let solution = Solution::from_nearest_neighbor(&self.problem, start_index, 1);
+            let solution = Solution::from_nearest_neighbor(&self.problem, start_index);
             let solution = Rc::new(solution);
             let total_distance = solution.total_distance();
             if total_distance < current_best_distance {

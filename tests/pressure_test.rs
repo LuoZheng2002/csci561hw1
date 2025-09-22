@@ -55,7 +55,7 @@ fn pressure_test_cover_tree_nearest_neighbor() {
         //     tree.print();
         //     panic!();
         // }
-        let tree_result = tree.nearest_neighbor(query, 1).unwrap();
+        let tree_result = tree.nearest_neighbor(query).unwrap();
 
         let dist_diff = (tree_result.2 - brute_result.1).abs();
         // let same_point = &tree_result.0 == brute_result.0;

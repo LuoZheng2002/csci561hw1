@@ -95,7 +95,7 @@ pub struct Problem {
 
 #[derive(Clone)]
 pub struct Solution {
-    pub order: Vec<u32>,
+    pub order_without_loop: Vec<u32>,
     pub problem: Weak<Problem>,
     total_distance: RefCell<Option<f32>>,
 }
@@ -107,23 +107,23 @@ impl Solution {
         total_distance: Option<f32>,
     ) -> Self {
         Self {
-            order: order_without_loop,
+            order_without_loop,
             problem,
             total_distance: RefCell::new(total_distance),
         }
     }
     pub fn is_valid(&self, num_cities: u32) -> bool {
-        if self.order.len() != num_cities as usize {
+        if self.order_without_loop.len() != num_cities as usize {
             println!(
                 "Length mismatch: expected {}, got {}",
                 num_cities,
-                self.order.len()
+                self.order_without_loop.len()
             );
             return false;
         }
         // check for duplicates
         let mut seen = vec![false; num_cities as usize];
-        for &city in &self.order {
+        for &city in &self.order_without_loop {
             if city >= num_cities || seen[city as usize] {
                 println!("Invalid city index or duplicate: {}", city);
                 return false;
@@ -139,9 +139,10 @@ impl Solution {
         }
         let mut new_total_length = 0.0;
         let problem = self.problem.upgrade().expect("Problem has been dropped");
-        for i in 0..self.order.len() {
-            let city_a = &problem.cities[self.order[i] as usize];
-            let city_b = &problem.cities[self.order[(i + 1) % self.order.len()] as usize];
+        for i in 0..self.order_without_loop.len() {
+            let city_a = &problem.cities[self.order_without_loop[i] as usize];
+            let city_b = &problem.cities
+                [self.order_without_loop[(i + 1) % self.order_without_loop.len()] as usize];
             let dist = city_a.distance(city_b);
             new_total_length += dist;
         }
@@ -155,17 +156,16 @@ impl Solution {
     //     *fitness = Some(new_fitness);
     //     new_fitness
     // }
-    pub fn from_random_shuffle(problem: &Rc<Problem>, rng: &mut impl Rng) -> Self {
-        let num_cities = problem.cities.len();
-        let mut order: Vec<u32> = (0..num_cities as u32).collect();
-        order.shuffle(rng);
-        Self::new(order, Rc::downgrade(problem), None)
-    }
+    // pub fn from_random_shuffle(problem: &Rc<Problem>, rng: &mut impl Rng) -> Self {
+    //     let num_cities = problem.cities.len();
+    //     let mut order: Vec<u32> = (0..num_cities as u32).collect();
+    //     order.shuffle(rng);
+    //     Self::new(order, Rc::downgrade(problem), None)
+    // }
 
     pub fn from_nearest_neighbor(
         problem: &Rc<Problem>,
         start_index: usize,
-        nth_neighbor: usize,
     ) -> Self {
         assert!(start_index < problem.cities.len());
         let mut cover_tree = CoverTree::new();
@@ -181,7 +181,7 @@ impl Solution {
         cover_tree.remove(&initial_city);
         for _ in 0..problem.cities.len() - 1 {
             let (nearest_city, index, distance) = cover_tree
-                .nearest_neighbor(&current_city, nth_neighbor)
+                .nearest_neighbor(&current_city)
                 .unwrap();
             // println!("Current city: {:?}, Nearest city: {:?}, Dist: {}", current_city, nearest_city, dist);
             // current_city = nearest_city;
@@ -197,7 +197,7 @@ impl Solution {
     }
     pub fn targeted_two_opt(&self) -> Self {
         let problem = self.problem.upgrade().expect("Problem has been dropped");
-        let mut best_order = self.order.clone();
+        let mut best_order = self.order_without_loop.clone();
         // let mut best_distance = self.total_distance();
 
         let n = best_order.len();
