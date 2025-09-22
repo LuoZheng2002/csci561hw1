@@ -209,6 +209,15 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 best_candidates.pop();
             }
             let (best_distance, best_candidate) = best_candidates.pop().unwrap();
+            if nth == 2 {
+                println!("nth neighbor is 2");
+                let (first_best_candidate_distance, _first_best_candidate) =
+                    best_candidates.pop().unwrap();
+                println!(
+                    "positive distance difference: {}",
+                    best_distance.into_inner() - first_best_candidate_distance.into_inner()
+                );
+            }
             Some((
                 best_candidate.rc().point.clone(),
                 best_candidate.rc().index,
