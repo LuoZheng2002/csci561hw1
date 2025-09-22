@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 use std::rc::{Rc, Weak};
 use std::vec;
@@ -205,8 +206,13 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         }
         // Some(best_candidate.expect("Reached the bottom of the cover tree but no candidate found, which should not happen."))
         if nth <= best_candidates.len() {
+            // let mut last_distance = f32::INFINITY;
+            // for _ in 0..nth - 1 {
+            //     let (first_best_distance, _first_best_candidate) = best_candidates.pop().unwrap().0;
+            //     last_distance = first_best_distance.into_inner();
+            // }
             for _ in 0..best_candidates.len() - nth {
-                best_candidates.pop();
+                best_candidates.pop().unwrap();
             }
             let (best_distance, best_candidate) = best_candidates.pop().unwrap();
             if nth == 2 {

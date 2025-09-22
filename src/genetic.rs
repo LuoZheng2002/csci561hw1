@@ -85,7 +85,7 @@ impl GeneticAlgorithm {
         let mut execute_nearest_neighbor = |nn_start_index: &mut usize, rng: &mut StdRng| {
             // let start_index = i % num_cities;
             let second_nearest_proba = if num_nearest_neighbor_calls < first_proba_threshold {
-                0.5
+                0.0
             } else if num_nearest_neighbor_calls >= first_proba_threshold
                 && num_nearest_neighbor_calls < second_proba_threshold
             {
