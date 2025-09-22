@@ -99,7 +99,7 @@ impl GeneticAlgorithm {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
             let nth_neighbor = if rng.random_bool(second_nearest_proba as f64) {
-                2
+                1
             } else {
                 1
             };
@@ -167,7 +167,7 @@ impl GeneticAlgorithm {
                     .clone();
             }
             let mut new_solutions = Vec::new();
-            for _ in 0..self.extra_population_size / 2 {
+            for _ in 0..self.extra_population_size {
                 let parent1 = population.sample_parent(&mut rng);
                 let parent2 = population.sample_parent(&mut rng);
                 let start_index = rng.random_range(0..parent1.order.len());
@@ -189,35 +189,35 @@ impl GeneticAlgorithm {
                     new_solutions.push(Rc::new(child.clone()));
                 }
             }
-            for _ in 0..self.extra_population_size / 2 {
-                if timer.elapsed().as_secs() >= time_limit_secs {
-                    return current_best_solution
-                        .as_ref()
-                        .expect("No solution found")
-                        .as_ref()
-                        .clone();
-                }
-                let solution = execute_nearest_neighbor(&mut nn_start_index, &mut rng);
-                let solution = Rc::new(solution);
-                let total_distance = solution.total_distance();
-                if total_distance < current_best_distance {
-                    current_best_distance = total_distance;
-                    current_best_solution = Some(solution.clone());
-                    println!(
-                        "New best solution found by nearest neighbor with start index {}: {}",
-                        nn_start_index, total_distance
-                    );
-                }
-                // population.push(solution);
-                if visited_total_lengths.insert(NotNan::new(total_distance).unwrap()) {
-                    // println!(
-                    //     "found a suboptimal solution from nn with length {}",
-                    //     total_distance
-                    // );
-                    // only insert if this total distance has not been seen before
-                    new_solutions.push(solution.clone());
-                }
-            }
+            // for _ in 0..self.extra_population_size / 2 {
+            //     if timer.elapsed().as_secs() >= time_limit_secs {
+            //         return current_best_solution
+            //             .as_ref()
+            //             .expect("No solution found")
+            //             .as_ref()
+            //             .clone();
+            //     }
+            //     let solution = execute_nearest_neighbor(&mut nn_start_index, &mut rng);
+            //     let solution = Rc::new(solution);
+            //     let total_distance = solution.total_distance();
+            //     if total_distance < current_best_distance {
+            //         current_best_distance = total_distance;
+            //         current_best_solution = Some(solution.clone());
+            //         println!(
+            //             "New best solution found by nearest neighbor with start index {}: {}",
+            //             nn_start_index, total_distance
+            //         );
+            //     }
+            //     // population.push(solution);
+            //     if visited_total_lengths.insert(NotNan::new(total_distance).unwrap()) {
+            //         // println!(
+            //         //     "found a suboptimal solution from nn with length {}",
+            //         //     total_distance
+            //         // );
+            //         // only insert if this total distance has not been seen before
+            //         new_solutions.push(solution.clone());
+            //     }
+            // }
             let mut all_solutions = population.solutions;
             all_solutions.extend(new_solutions);
             // extend the population

@@ -8,7 +8,7 @@ use crate::{
 pub fn adaptive_solve(problem: Rc<Problem>, timer: &Instant) -> Solution {
     let num_cities = problem.cities.len();
     let population_size: usize = (num_cities * 2).max(2000);
-    let extra_population_size: usize = num_cities.max(1000);
+    let extra_population_size: usize = (num_cities * 2).max(2000);
     const MARGIN: u64 = 3;
     const CLASS_1_TIME_LIMIT: u64 = 10;
     const CLASS_2_TIME_LIMIT: u64 = 15;
