@@ -166,6 +166,7 @@ impl GeneticAlgorithm {
                                         if !callback(&new_child2) {
                                             return;
                                         }
+                                        return;
                                         assert!(new_child2.is_valid(parent2.order.len() as u32));
                                         crossover_state =
                                             CrossoverState::FindingDifferentAfterStart {
@@ -251,98 +252,130 @@ impl GeneticAlgorithm {
                     .clone();
             }
             let mut new_solutions = Vec::new();
-            let precise_crossover_trials = self.extra_population_size * 2;
-            for _ in 0..precise_crossover_trials {
+            let total_crossover_trials = self.extra_population_size * 2;
+            // let precise_crossover_trials = self.extra_population_size * 2;
+            for _ in 0..total_crossover_trials {
                 if population.solutions.len() + new_solutions.len()
                     >= self.population_size + self.extra_population_size
                 {
                     println!(
-                        "Population full, stopping precise crossover -----------------------------------"
+                        "Population full, stopping all crossover -----------------------------------"
                     );
                     break;
                 }
-                if timer.elapsed().as_secs() >= time_limit_secs {
-                    println!(
-                        "Time limit reached, stopping precise crossover -----------------------------------"
-                    );
-                    break;
-                }
-                let (parent1, parent2) = loop {
-                    let parent1 = population.sample_parent(&mut rng);
-                    let parent2 = population.sample_parent(&mut rng);
-                    if !Rc::ptr_eq(&parent1, &parent2) {
-                        break (parent1, parent2);
+
+                const PRECISE_CROSSOVERS_PER_TRIAL: usize = 4;
+                for _ in 0..PRECISE_CROSSOVERS_PER_TRIAL {
+                    if timer.elapsed().as_secs() >= time_limit_secs {
+                        println!(
+                            "Time limit reached, stopping all crossover -----------------------------------"
+                        );
+                        break;
                     }
-                };
-                assert!(parent1.is_valid(num_cities as u32));
-                // Self::crossover(parent1, parent2, start_index, end_index)
-                let mut callback = |child: &Solution| -> bool {
-                    assert!(
-                        population.solutions.len() + new_solutions.len()
-                            < self.population_size + self.extra_population_size
-                    );
+                    if population.solutions.len() + new_solutions.len()
+                        >= self.population_size + self.extra_population_size
+                    {
+                        println!(
+                            "Population full, stopping all crossover -----------------------------------"
+                        );
+                        break;
+                    }
+                    let (parent1, parent2) = loop {
+                        let parent1 = population.sample_parent(&mut rng);
+                        let parent2 = population.sample_parent(&mut rng);
+                        if !Rc::ptr_eq(&parent1, &parent2) {
+                            break (parent1, parent2);
+                        }
+                    };
+                    assert!(parent1.is_valid(num_cities as u32));
+                    // Self::crossover(parent1, parent2, start_index, end_index)
+                    let mut callback = |child: &Solution| -> bool {
+                        assert!(
+                            population.solutions.len() + new_solutions.len()
+                                < self.population_size + self.extra_population_size
+                        );
+                        let child_distance = child.total_distance();
+                        if child_distance < current_best_distance {
+                            current_best_distance = child_distance;
+                            current_best_solution = Some(Rc::new(child.clone()));
+                            println!(
+                                "New best solution found by precise crossover: {}",
+                                child_distance
+                            );
+                        }
+                        if visited_total_lengths.insert(NotNan::new(child_distance).unwrap()) {
+                            // println!(
+                            //     "new precise crossover distance: {}, new solution size: {}",
+                            //     child_distance,
+                            //     new_solutions.len()
+                            // );
+                            new_solutions.push(Rc::new(child.clone()));
+                        }
+                        let population_not_full = population.solutions.len() + new_solutions.len()
+                            < self.population_size + self.extra_population_size;
+                        let has_time = timer.elapsed().as_secs() < time_limit_secs;
+                        // returns true if we want to continue generating more children
+                        population_not_full && has_time
+                    };
+                    Self::precise_crossover(&parent1, &parent2, &mut callback);
+                }
+                const RANDOM_CROSSOVER_PER_TRIAL: usize = 1;
+                for _ in 0..RANDOM_CROSSOVER_PER_TRIAL {
+                    if timer.elapsed().as_secs() >= time_limit_secs {
+                        println!(
+                            "Time limit reached, stopping all crossover -----------------------------------"
+                        );
+                        break;
+                    }
+                    let (parent1, parent2) = loop {
+                        let parent1 = population.sample_parent(&mut rng);
+                        let parent2 = population.sample_parent(&mut rng);
+                        if !Rc::ptr_eq(&parent1, &parent2) {
+                            break (parent1, parent2);
+                        }
+                    };
+                    assert!(parent1.is_valid(num_cities as u32));
+                    let (start_index, end_index) = loop {
+                        let index1 = rng.random_range(0..num_cities);
+                        let index2 = rng.random_range(0..num_cities);
+                        if index1 < index2 {
+                            break (index1, index2);
+                        } else if index1 > index2 {
+                            break (index2, index1);
+                        }
+                    };
+                    let child = Self::random_crossover(&parent1, &parent2, start_index, end_index);
                     let child_distance = child.total_distance();
                     if child_distance < current_best_distance {
                         current_best_distance = child_distance;
                         current_best_solution = Some(Rc::new(child.clone()));
                         println!(
-                            "New best solution found by precise crossover: {}",
+                            "New best solution found by random crossover: {}",
                             child_distance
                         );
                     }
                     if visited_total_lengths.insert(NotNan::new(child_distance).unwrap()) {
-                        // println!("new crossover distance: {}", child_distance);
-                        new_solutions.push(Rc::new(child.clone()));
+                        // println!(
+                        //     "new random crossover distance: {}, new solution size: {}",
+                        //     child_distance,
+                        //     new_solutions.len()
+                        // );
+                        new_solutions.push(Rc::new(child));
                     }
-                    let population_not_full = population.solutions.len() + new_solutions.len()
-                        < self.population_size + self.extra_population_size;
-                    let has_time = timer.elapsed().as_secs() < time_limit_secs;
-                    // returns true if we want to continue generating more children
-                    population_not_full && has_time
-                };
-                Self::precise_crossover(&parent1, &parent2, &mut callback);
-            }
-            let random_crossover_trials = self.extra_population_size * 5;
-            for _ in 0..random_crossover_trials {
-                if population.solutions.len() + new_solutions.len()
-                    >= self.population_size + self.extra_population_size
-                {
+                }
+                if timer.elapsed().as_secs() >= time_limit_secs {
                     println!(
-                        "Population full, stopping random crossover -----------------------------------"
+                        "Time limit reached, exiting from crossover -----------------------------------"
                     );
                     break;
                 }
-                let (parent1, parent2) = loop {
-                    let parent1 = population.sample_parent(&mut rng);
-                    let parent2 = population.sample_parent(&mut rng);
-                    if !Rc::ptr_eq(&parent1, &parent2) {
-                        break (parent1, parent2);
-                    }
-                };
-                assert!(parent1.is_valid(num_cities as u32));
-                let (start_index, end_index) = loop {
-                    let index1 = rng.random_range(0..num_cities);
-                    let index2 = rng.random_range(0..num_cities);
-                    if index1 < index2 {
-                        break (index1, index2);
-                    } else if index1 > index2 {
-                        break (index2, index1);
-                    }
-                };
-                let child = Self::random_crossover(&parent1, &parent2, start_index, end_index);
-                let child_distance = child.total_distance();
-                if child_distance < current_best_distance {
-                    current_best_distance = child_distance;
-                    current_best_solution = Some(Rc::new(child.clone()));
-                    println!(
-                        "New best solution found by random crossover: {}",
-                        child_distance
-                    );
-                }
-                if visited_total_lengths.insert(NotNan::new(child_distance).unwrap()) {
-                    // println!("new random crossover distance: {}", child_distance);
-                    new_solutions.push(Rc::new(child));
-                }
+            }
+            if timer.elapsed().as_secs() >= time_limit_secs {
+                return current_best_solution
+                    .as_ref()
+                    .expect("No solution found")
+                    .as_ref()
+                    .clone();
             }
             let mut combined_solutions = population.solutions;
             combined_solutions.extend(new_solutions);

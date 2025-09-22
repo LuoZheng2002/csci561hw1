@@ -7,13 +7,13 @@ use crate::{
 
 pub fn adaptive_solve(problem: Rc<Problem>, timer: &Instant) -> Solution {
     let num_cities = problem.cities.len();
-    let population_size: usize = (num_cities * 2).max(2000);
-    let extra_population_size: usize = (num_cities * 2).max(2000);
-    const MARGIN: u64 = 3;
-    const CLASS_1_TIME_LIMIT: u64 = 20;
-    const CLASS_2_TIME_LIMIT: u64 = 15;
-    const CLASS_3_TIME_LIMIT: u64 = 15;
-    const CLASS_4_TIME_LIMIT: u64 = 60;
+    let population_size: usize = 200;
+    let extra_population_size: usize = 200;
+    const MARGIN: u64 = 2;
+    const CLASS_1_TIME_LIMIT: u64 = 60;
+    const CLASS_2_TIME_LIMIT: u64 = 75;
+    const CLASS_3_TIME_LIMIT: u64 = 120;
+    const CLASS_4_TIME_LIMIT: u64 = 300;
     let solution = match num_cities {
         0..10 => Solution::from_brute_force(&problem),
         10..50 => GeneticAlgorithm::new(problem, population_size, extra_population_size)
