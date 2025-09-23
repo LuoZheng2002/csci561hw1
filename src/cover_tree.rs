@@ -231,7 +231,11 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         //         best_distance.into_inner(),
         //     ))
         // }
-        Some((best_candidate.point.clone(), best_candidate.index, best_distance))
+        Some((
+            best_candidate.point.clone(),
+            best_candidate.index,
+            best_distance,
+        ))
     }
 
     pub fn remove(&mut self, target: &T) {
@@ -245,7 +249,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
         level_to_cover_set.insert(root_level, vec![Rc::downgrade(&root)]);
         let mut target_node_and_lowest_child: Option<(Rc<CoverTreeNode<T>>, i32)> = None;
         for i in (-root_level..).map(|x| -x) {
-            if i == -10 {
+            if i == -1000 {
                 panic!("Infinite loop detected when searching for target point in cover tree.");
             }
 
@@ -257,8 +261,11 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                 break;
             }
             if target_node_and_lowest_child.is_none() {
-                target_node_and_lowest_child = current_cover_set.iter().find_map(|weak_node| {
-                    let node = weak_node.upgrade()?;
+                // try to find the target node in the current cover set
+                for weak_node in current_cover_set.iter() {
+                    let Some(node) = weak_node.upgrade() else {
+                        continue;
+                    };
                     if node.point == *target {
                         let lowest_child = {
                             let children = node.non_self_descendants.borrow();
@@ -273,11 +280,10 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                                 .min()
                                 .unwrap_or_else(|| node.level.borrow().clone())
                         };
-                        Some((node, lowest_child))
-                    } else {
-                        None
+                        target_node_and_lowest_child = Some((node, lowest_child));
+                        break; // equivalent to early return in find_map
                     }
-                });
+                }
             }
             if let Some((node, lowest_child_level)) = target_node_and_lowest_child.as_ref() {
                 if i - 1 == *lowest_child_level {
@@ -293,7 +299,7 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
                     break;
                 }
             }
-            let mut has_remaining_children = true;
+            let mut has_remaining_children = false;
             assert!(!current_cover_set.is_empty());
             let mut next_cover_set: Vec<Weak<CoverTreeNode<T>>> = Vec::new();
             // search for the target node in the children of the current cover set
@@ -338,11 +344,11 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             *child.ancestor.borrow_mut() = Weak::new();
         }
         // process the target's parent node if there is one
-        if let Some(parent_node) = target_node.ancestor.borrow().upgrade() {
+        if let Some(target_parent) = target_node.ancestor.borrow().upgrade() {
             // remove the target node from its parent's children list
             // this will also invalidate target in the cover set at level current_level - 1
-            assert_ne!(&parent_node.point, &target_node.point);
-            let mut parent_children = parent_node.non_self_descendants.borrow_mut();
+            assert_ne!(&target_parent.point, &target_node.point);
+            let mut parent_children = target_parent.non_self_descendants.borrow_mut();
             let num_descendants_before_removal = parent_children.len();
             parent_children.retain(|child| !Rc::ptr_eq(child, &target_node));
             assert_eq!(num_descendants_before_removal - 1, parent_children.len());
@@ -366,9 +372,9 @@ impl<T: Ord + Clone + Distance + std::fmt::Debug> CoverTree<T> {
             // promote one of the target's children to be the new root node
             assert!(highest_target_child.ancestor.borrow().upgrade().is_none()); // its parent was removed in the last step
             self.root = Some(highest_target_child.clone());
-        };
+        }
         // let target_level = target_node.level.borrow().clone();
-        if !target_node.non_self_descendants.borrow().is_empty() {
+        if !target_children.is_empty() {
             assert_eq!(
                 *level_to_cover_set.first_key_value().unwrap().0,
                 lowest_child_level + 1

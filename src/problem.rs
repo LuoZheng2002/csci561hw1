@@ -163,10 +163,7 @@ impl Solution {
     //     Self::new(order, Rc::downgrade(problem), None)
     // }
 
-    pub fn from_nearest_neighbor(
-        problem: &Rc<Problem>,
-        start_index: usize,
-    ) -> Self {
+    pub fn from_nearest_neighbor(problem: &Rc<Problem>, start_index: usize) -> Self {
         assert!(start_index < problem.cities.len());
         let mut cover_tree = CoverTree::new();
         let offset = start_index;
@@ -180,9 +177,8 @@ impl Solution {
         }
         cover_tree.remove(&initial_city);
         for _ in 0..problem.cities.len() - 1 {
-            let (nearest_city, index, distance) = cover_tree
-                .nearest_neighbor(&current_city)
-                .unwrap();
+            let (nearest_city, index, distance) =
+                cover_tree.nearest_neighbor(&current_city).unwrap();
             // println!("Current city: {:?}, Nearest city: {:?}, Dist: {}", current_city, nearest_city, dist);
             // current_city = nearest_city;
             total_distance += distance;
@@ -195,52 +191,52 @@ impl Solution {
         total_distance += current_city.distance(&initial_city);
         Self::new(ordered_cities, Rc::downgrade(problem), Some(total_distance))
     }
-    pub fn targeted_two_opt(&self) -> Self {
-        let problem = self.problem.upgrade().expect("Problem has been dropped");
-        let mut best_order = self.order_without_loop.clone();
-        // let mut best_distance = self.total_distance();
+    // pub fn targeted_two_opt(&self) -> Self {
+    //     let problem = self.problem.upgrade().expect("Problem has been dropped");
+    //     let mut best_order = self.order_without_loop.clone();
+    //     // let mut best_distance = self.total_distance();
 
-        let n = best_order.len();
-        if n < 4 {
-            panic!("Solution too short for 2-opt optimization");
-        }
+    //     let n = best_order.len();
+    //     if n < 4 {
+    //         panic!("Solution too short for 2-opt optimization");
+    //     }
 
-        let cities = &problem.cities;
+    //     let cities = &problem.cities;
 
-        // let dist = |a: u32, b: u32| cities[a as usize].distance(&cities[b as usize]);
-        loop {
-            let mut found_shorter = false;
-            let start = best_order[0];
-            let end = best_order[n - 1];
-            for i in 1..n - 2 {
-                let a = best_order[i];
-                let b = best_order[i + 1];
-                let city_a = &cities[a as usize];
-                let city_b = &cities[b as usize];
-                let city_start = &cities[start as usize];
-                let city_end = &cities[end as usize];
-                let current_cost = city_a.distance(city_b) + city_end.distance(city_start);
-                let new_cost = city_a.distance(city_end) + city_b.distance(city_start);
-                if new_cost < current_cost {
-                    best_order[0..=i].reverse();
-                    let new_solution =
-                        Solution::new(best_order.clone(), Rc::downgrade(&problem), None);
-                    let new_distance = new_solution.total_distance();
-                    assert!(self.total_distance() - current_cost == new_distance - new_cost);
-                    found_shorter = true;
-                    println!("found shorter");
-                    break;
-                } else {
-                    println!("not shorter");
-                }
-            }
-            if !found_shorter {
-                println!("did not find shorter");
-                break;
-            }
-        }
-        Solution::new(best_order, Rc::downgrade(&problem), None)
-    }
+    //     // let dist = |a: u32, b: u32| cities[a as usize].distance(&cities[b as usize]);
+    //     loop {
+    //         let mut found_shorter = false;
+    //         let start = best_order[0];
+    //         let end = best_order[n - 1];
+    //         for i in 1..n - 2 {
+    //             let a = best_order[i];
+    //             let b = best_order[i + 1];
+    //             let city_a = &cities[a as usize];
+    //             let city_b = &cities[b as usize];
+    //             let city_start = &cities[start as usize];
+    //             let city_end = &cities[end as usize];
+    //             let current_cost = city_a.distance(city_b) + city_end.distance(city_start);
+    //             let new_cost = city_a.distance(city_end) + city_b.distance(city_start);
+    //             if new_cost < current_cost {
+    //                 best_order[0..=i].reverse();
+    //                 let new_solution =
+    //                     Solution::new(best_order.clone(), Rc::downgrade(&problem), None);
+    //                 let new_distance = new_solution.total_distance();
+    //                 assert!(self.total_distance() - current_cost == new_distance - new_cost);
+    //                 found_shorter = true;
+    //                 println!("found shorter");
+    //                 break;
+    //             } else {
+    //                 println!("not shorter");
+    //             }
+    //         }
+    //         if !found_shorter {
+    //             println!("did not find shorter");
+    //             break;
+    //         }
+    //     }
+    //     Solution::new(best_order, Rc::downgrade(&problem), None)
+    // }
 
     pub fn from_brute_force(problem: &Rc<Problem>) -> Self {
         let cities = &problem.cities;
@@ -385,15 +381,15 @@ impl Population {
         assert!(shrunk_population.len() == target_size);
         shrunk_population
     }
-    pub fn best_solution(&self) -> Rc<Solution> {
-        self.solutions
-            .iter()
-            .min_by(|a, b| {
-                a.total_distance()
-                    .partial_cmp(&b.total_distance())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .expect("Population has no solutions")
-            .clone()
-    }
+    // pub fn best_solution(&self) -> Rc<Solution> {
+    //     self.solutions
+    //         .iter()
+    //         .min_by(|a, b| {
+    //             a.total_distance()
+    //                 .partial_cmp(&b.total_distance())
+    //                 .unwrap_or(std::cmp::Ordering::Equal)
+    //         })
+    //         .expect("Population has no solutions")
+    //         .clone()
+    // }
 }

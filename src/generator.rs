@@ -25,6 +25,10 @@ fn generate_point_in_sphere(max_radius: f32, dist: &Uniform<f32>, rng: &mut impl
     let y = r * phi.sin() * theta.sin();
     let z = r * phi.cos();
 
+    let x = x + max_radius;
+    let y = y + max_radius;
+    let z = z + max_radius;
+
     let x = x as u32;
     let y = y as u32;
     let z = z as u32;

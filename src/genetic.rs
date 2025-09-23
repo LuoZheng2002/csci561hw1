@@ -97,16 +97,18 @@ impl GeneticAlgorithm {
                 while let Some(current_start) = next_start_to_explore.take() {
                     let mut crossover_state = CrossoverState::FindingStartIndex;
                     for i in current_start as usize..parent1_order.len() {
+                        let parent1_element = parent1_order[i];
+                        let parent2_element = parent2_order[i];
                         match crossover_state {
                             CrossoverState::FindingStartIndex => {
-                                if parent1_order[i] == parent2_order[i] {
+                                if parent1_element == parent2_element {
                                     crossover_state = CrossoverState::FindingDifferentAfterStart {
                                         start_index: i as u32,
                                     };
                                 }
                             }
                             CrossoverState::FindingDifferentAfterStart { start_index } => {
-                                if parent1_order[i] == parent2_order[i] {
+                                if parent1_element == parent2_element {
                                     assert!(i as u32 == start_index + 1);
                                     crossover_state = CrossoverState::FindingDifferentAfterStart {
                                         start_index: i as u32,
@@ -114,8 +116,8 @@ impl GeneticAlgorithm {
                                 } else {
                                     let mut parent1_set: BTreeSet<u32> = BTreeSet::new();
                                     let mut parent2_set: BTreeSet<u32> = BTreeSet::new();
-                                    parent1_set.insert(parent1_order[i]);
-                                    parent2_set.insert(parent2_order[i]);
+                                    parent1_set.insert(parent1_element);
+                                    parent2_set.insert(parent2_element);
                                     crossover_state = CrossoverState::FindingEndIndex {
                                         start_index,
                                         parent1_set,
@@ -128,7 +130,7 @@ impl GeneticAlgorithm {
                                 mut parent1_set,
                                 mut parent2_set,
                             } => {
-                                if parent1_order[i] == parent2_order[i] {
+                                if parent1_element == parent2_element {
                                     if parent1_set == parent2_set {
                                         // println!(
                                         //     "Found a crossover between indices {} and {}",
@@ -183,8 +185,8 @@ impl GeneticAlgorithm {
                                         if next_start_to_explore.is_none() {
                                             next_start_to_explore = Some(i as u32);
                                         }
-                                        parent1_set.insert(parent1_order[i]);
-                                        parent2_set.insert(parent2_order[i]);
+                                        parent1_set.insert(parent1_element);
+                                        parent2_set.insert(parent2_element);
                                         crossover_state = CrossoverState::FindingEndIndex {
                                             start_index,
                                             parent1_set,
@@ -192,8 +194,8 @@ impl GeneticAlgorithm {
                                         };
                                     }
                                 } else {
-                                    parent1_set.insert(parent1_order[i]);
-                                    parent2_set.insert(parent2_order[i]);
+                                    parent1_set.insert(parent1_element);
+                                    parent2_set.insert(parent2_element);
                                     crossover_state = CrossoverState::FindingEndIndex {
                                         start_index,
                                         parent1_set,
