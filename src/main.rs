@@ -53,7 +53,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 
 fn main() {
-    let input_file = File::open("../test_cases/test_case6.txt").expect("Failed to open input file");
+    let input_file = File::open("../test_cases/test_case11.txt").expect("Failed to open input file");
     let mut reader = BufReader::new(input_file);
 
     let mut first_line = String::new();
@@ -95,4 +95,5 @@ fn main() {
     }
 
     println!("Time used: {} seconds", timer.elapsed().as_secs());
+    println!("Best distance: {}", solution.total_distance());
 }
