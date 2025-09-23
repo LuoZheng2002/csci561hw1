@@ -93,6 +93,12 @@ pub struct Problem {
     pub cities: Vec<City>,
 }
 
+impl Problem {
+    pub fn new(cities: Vec<City>) -> Self {
+        Self { cities }
+    }
+}
+
 #[derive(Clone)]
 pub struct Solution {
     pub order_without_loop: Vec<u32>,
